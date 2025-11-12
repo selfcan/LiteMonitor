@@ -30,6 +30,8 @@
     "Width": "界面宽度",
     "Language": "语言/Language",
     "AutoStart": "开机自启动",
+    "CheckUpdate": "检查更新",
+    "About": "关于 LiteMonitor",
     "Exit": "退出"
   }
 }

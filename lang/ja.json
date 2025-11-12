@@ -1,0 +1,37 @@
+{
+  "Title": "⚡️LiteMonitor",
+  "Groups": {
+    "CPU": "💻CPU",
+    "GPU": "🎮GPU",
+    "MEM": "💾メモリ",
+    "DISK": "📀ディスク",
+    "NET": "🌐ネットワーク"
+  },
+  "Items": {
+    "CPU.Load": "CPU使用率",
+    "CPU.Temp": "CPU温度",
+    "GPU.Load": "GPU使用率",
+    "GPU.Temp": "GPU温度",
+    "GPU.VRAM": "VRAM使用量",
+    "MEM.Load": "メモリ使用率",
+    "DISK.Read": "読み取り",
+    "DISK.Write": "書き込み",
+    "NET.Up": "アップロード",
+    "NET.Down": "ダウンロード"
+  },
+  "Menu": {
+    "TopMost": "常に最前面に表示",
+    "Opacity": "透明度",
+    "ShowItems": "表示項目",
+    "Theme": "テーマ",
+    "More": "その他",
+    "ClickThrough": "クリックを透過",
+    "AutoHide": "端で自動的に隠す",
+    "Width": "パネル幅",
+    "Language": "言語",
+    "AutoStart": "自動起動",
+    "CheckUpdate": "更新を確認",
+    "About": "LiteMonitorについて",
+    "Exit": "終了"
+  }
+}

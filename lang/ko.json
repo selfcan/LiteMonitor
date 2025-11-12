@@ -1,0 +1,37 @@
+{
+  "Title": "⚡️LiteMonitor",
+  "Groups": {
+    "CPU": "💻CPU",
+    "GPU": "🎮GPU",
+    "MEM": "💾메모리",
+    "DISK": "📀디스크",
+    "NET": "🌐네트워크"
+  },
+  "Items": {
+    "CPU.Load": "CPU 사용률",
+    "CPU.Temp": "CPU 온도",
+    "GPU.Load": "GPU 사용률",
+    "GPU.Temp": "GPU 온도",
+    "GPU.VRAM": "VRAM 사용량",
+    "MEM.Load": "메모리 사용률",
+    "DISK.Read": "읽기",
+    "DISK.Write": "쓰기",
+    "NET.Up": "업로드",
+    "NET.Down": "다운로드"
+  },
+  "Menu": {
+    "TopMost": "항상 위에 표시",
+    "Opacity": "투명도",
+    "ShowItems": "표시 항목",
+    "Theme": "테마",
+    "More": "더보기",
+    "ClickThrough": "클릭 통과",
+    "AutoHide": "가장자리 자동 숨김",
+    "Width": "패널 너비",
+    "Language": "언어",
+    "AutoStart": "자동 시작",
+    "CheckUpdate": "업데이트 확인",
+    "About": "LiteMonitor 정보",
+    "Exit": "종료"
+  }
+}

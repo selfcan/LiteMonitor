@@ -7,8 +7,12 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <PlatformTarget>x64</PlatformTarget>
-	<ApplicationIcon>assets\app.ico</ApplicationIcon>
-	<ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>assets\app.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+	  
+    <Version>1.0</Version><!-- 程序主版本（UpdateChecker / About用） -->
+    <AssemblyVersion>1.0.0.0</AssemblyVersion><!-- 稳定不动 -->
+    <FileVersion>1.0.0.0</FileVersion><!-- 文件属性显示 -->
   </PropertyGroup>
 
   <ItemGroup>

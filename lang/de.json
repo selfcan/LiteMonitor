@@ -1,0 +1,37 @@
+{
+  "Title": "⚡️LiteMonitor",
+  "Groups": {
+    "CPU": "💻CPU",
+    "GPU": "🎮GPU",
+    "MEM": "💾Arbeitsspeicher",
+    "DISK": "📀Festplatte",
+    "NET": "🌐Netzwerk"
+  },
+  "Items": {
+    "CPU.Load": "CPU-Auslastung",
+    "CPU.Temp": "CPU-Temperatur",
+    "GPU.Load": "GPU-Auslastung",
+    "GPU.Temp": "GPU-Temperatur",
+    "GPU.VRAM": "VRAM-Nutzung",
+    "MEM.Load": "Speichernutzung",
+    "DISK.Read": "Lesen",
+    "DISK.Write": "Schreiben",
+    "NET.Up": "Upload",
+    "NET.Down": "Download"
+  },
+  "Menu": {
+    "TopMost": "Immer im Vordergrund",
+    "Opacity": "Transparenz",
+    "ShowItems": "Anzuzeigende Elemente",
+    "Theme": "Design",
+    "More": "Mehr",
+    "ClickThrough": "Klicks durchlassen",
+    "AutoHide": "Automatisch am Rand ausblenden",
+    "Width": "Panelbreite",
+    "Language": "Sprache",
+    "AutoStart": "Autostart",
+    "CheckUpdate": "Nach Updates suchen",
+    "About": "Über LiteMonitor",
+    "Exit": "Beenden"
+  }
+}

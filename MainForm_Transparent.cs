@@ -411,6 +411,18 @@ namespace LiteMonitor
                 AutoStart.Set(_cfg.AutoStart);
             };
             menu.Items.Add(autoStart);
+            menu.Items.Add(new ToolStripSeparator());
+
+            // === 检查更新 ===
+            var checkUpdate = new ToolStripMenuItem(LanguageManager.T("Menu.CheckUpdate"));
+            checkUpdate.Click += async (_, __) => await UpdateChecker.CheckForUpdatesAsync();
+            menu.Items.Add(checkUpdate);
+
+            // === 关于 ===
+            var about = new ToolStripMenuItem(LanguageManager.T("Menu.About"));
+            about.Click += (_, __) => new AboutForm().ShowDialog(this);
+            menu.Items.Add(about);
+            menu.Items.Add(new ToolStripSeparator());
 
             // === 退出 ===
             var exit = new ToolStripMenuItem(LanguageManager.T("Menu.Exit"));

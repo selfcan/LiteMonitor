@@ -9,7 +9,7 @@ namespace LiteMonitor
     {
         // ====== 主题 / 行为基础 ======
         public string Skin { get; set; } = "DarkNeo_Modern";
-        public int PanelWidth { get; set; } = 240;   // ← 默认值与主题默认宽度一致
+        public int PanelWidth { get; set; } = 260;   // ← 默认值与主题默认宽度一致
         public bool TopMost { get; set; } = true;
         public bool AutoStart { get; set; } = false;
         public int RefreshMs { get; set; } = 300; //刷新时间
@@ -22,7 +22,7 @@ namespace LiteMonitor
         public double Opacity { get; set; } = 0.85;   // ← 窗口透明度（原 theme.window.opacity）
         public string Language { get; set; } = "zh";  // ← 语言：zh / en（对应 zh.json / en.json）
         public bool ClickThrough { get; set; } = false; // ← 鼠标穿透
-        public bool AutoHide { get; set; } = false;     // ← 靠边自动隐藏
+        public bool AutoHide { get; set; } = true;     // ← 靠边自动隐藏
 
         // ====== 显示项（整组/子项开关）======
         public EnabledSet Enabled { get; set; } = new();
