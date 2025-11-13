@@ -9,7 +9,7 @@ namespace LiteMonitor
     {
         // ====== 主题 / 行为基础 ======
         public string Skin { get; set; } = "DarkNeo_Modern";
-        public int PanelWidth { get; set; } = 260;   // ← 默认值与主题默认宽度一致
+        public int PanelWidth { get; set; } = 240;   // ← 默认值与主题默认宽度一致
         public bool TopMost { get; set; } = true;
         public bool AutoStart { get; set; } = false;
         public int RefreshMs { get; set; } = 300; //刷新时间

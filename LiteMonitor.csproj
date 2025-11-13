@@ -21,14 +21,14 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- 自动复制 themes 与 lang 两个目录下的所有文件 -->
+    <!-- 自动复制 themes 与 lang 以及 assets 三个目录下的所有文件 -->
     <None Include="resources\themes\**\*.*">
 	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Include="resources\lang\**\*.*">
 	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Include="assets\**\*.*">
+    <None Include="resources\assets\**\*.*">
 	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>	
   </ItemGroup>
