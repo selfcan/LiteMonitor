@@ -16,10 +16,8 @@ namespace LiteMonitor.Common
         // ============================================================
         public static string FormatValue(string key, float? raw)
         {
-            if (!raw.HasValue) return "0.0";
-
-            float v = raw.Value;
             string k = key.ToUpperInvariant();
+            float v = raw ?? 0.0f;
 
             if (k.Contains("LOAD") || k.Contains("VRAM") || k.Contains("MEM")) return $"{v:0.0}%";
             if (k.Contains("TEMP")) return $"{v:0.0}°C";
