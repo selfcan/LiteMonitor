@@ -17,7 +17,7 @@ It supports horizontal/vertical display, multiple languages, theme switching, tr
 ![LiteMonitor Horizontal](./resources/screenshots/overview3.png)
 
 ###  🟢 **New Network Speed Test Feature**
-![LiteMonitor Network Speed Test](./resources/screenshots/overview4.png)  👉 ![LiteMonitor Network Speed Test Menu](./resources/screenshots/overview5.png)
+![LiteMonitor Network Speed Test](./resources/screenshots/overview4.png)  👉 ![LiteMonitor 菜单](./resources/screenshots/overview6.png) ![LiteMonitor 菜单](./resources/screenshots/overview5.png)
 
 ###  🟢 **New Theme Editor**
 ![LiteMonitor Theme Editor](./resources/screenshots/overview2.jpg)
