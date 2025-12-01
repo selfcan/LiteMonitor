@@ -5,7 +5,8 @@
     "GPU": "🎮GPU",
     "MEM": "💾메모리",
     "DISK": "📀디스크",
-    "NET": "🌐네트워크"
+    "NET": "🌐네트워크",
+    "DATA": "📈트래픽 통계"
   },
   "Items": {
     "CPU.Load": "CPU 사용률",
@@ -21,7 +22,9 @@
     "DISK.Read": "읽기",
     "DISK.Write": "쓰기",
     "NET.Up": "업로드",
-    "NET.Down": "다운로드"
+    "NET.Down": "다운로드",
+    "DATA.DayUp": "오늘 업",
+    "DATA.DayDown": "오늘 다운"
   },
   "Short": {
     "CPU.Load": "CPU",
@@ -37,7 +40,9 @@
     "DISK.Read": "읽기",
     "DISK.Write": "쓰기",
     "NET.Up": "⏫",
-    "NET.Down": "⏬"
+    "NET.Down": "⏬",
+    "DATA.DayUp": "⏫",
+    "DATA.DayDown": "⏬"
   },
   "Menu": {
     "TopMost": "항상 위",
@@ -50,9 +55,12 @@
     "Opacity": "투명도",
     "ShowItems": "표시 항목",
     "Theme": "테마",
+    "SpeedTest": "속도 테스트",
+    "Traffic": "트래픽 기록",
     "More": "더보기",
     "ThemeEditor": "테마 편집기",
-    "SpeedTest": "속도 테스트", 
+    "thresholds": "경고 임계값",
+    "AlertTemp": "고온 경고",
     "ClickThrough": "클릭 통과",
     "AutoHide": "가장자리 자동 숨김",
     "ClampToScreen": "화면 밖 금지",
@@ -64,7 +72,6 @@
     "Auto": "자동 모드",
     "Language": "언어",
     "AutoStart": "자동 시작",
-    "CheckUpdate": "업데이트 확인",
     "About": "LiteMonitor 정보",
     "Exit": "종료"
   }

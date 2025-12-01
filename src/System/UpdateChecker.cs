@@ -89,7 +89,7 @@ namespace LiteMonitor
                 {
                     if (showMessage)
                          // ★★★ 修改了这里 ★★★
-                        MessageBox.Show($"当前已是最新版本 ：v{current}", "检查更新", 
+                        MessageBox.Show($"当前已是最新版本 ：v{current}\n发布日期：{releaseDate}", "检查更新", 
                             MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
             }

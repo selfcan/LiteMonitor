@@ -13,58 +13,96 @@ namespace LiteMonitor.Common
     public static class UIUtils
     {
         // ============================================================
-        // ① 通用数值格式化（统一入口）
+        // 核心：通用数值格式化 (对外入口)
         // ============================================================
         public static string FormatValue(string key, float? raw)
         {
             string k = key.ToUpperInvariant();
             float v = raw ?? 0.0f;
 
-            if (k.Contains("LOAD") || k.Contains("VRAM") || k.Contains("MEM")) return $"{v:0.0}%";
-            if (k.Contains("TEMP")) return $"{v:0.0}°C";
+            // 1. 百分比类 (Load / Mem / Vram)
+            if (k.Contains("LOAD") || k.Contains("VRAM") || k.Contains("MEM")) 
+                return $"{v:0.0}%";
 
-            // 频率
-            if (key.Contains("Clock"))
-            {
+            // 2. 温度类
+            if (k.Contains("TEMP")) 
+                return $"{v:0.0}°C";
+
+            // 3. 频率类 (GHz / MHz)
+            if (k.Contains("CLOCK"))
+                // 逻辑优化：>=1000MHz 显示 GHz，否则显示 MHz
+                //return v >= 1000 ? $"{v / 1000.0:F1}GHz" : $"{v:F0}MHz";
                 return $"{v / 1000.0:F1}GHz";
-                // if (v >= 1000) return $"{v / 1000.0:F1}GHz";
-                // return $"{v:F0}MHz";
-            }
 
-            // 功耗
-            if (key.Contains("Power"))
-            {
+            // 4. 功耗类 (W)
+            if (k.Contains("POWER"))
                 return $"{v:F0}W";
-            }
 
-            // NET / DISK = 流量类
+            // 5. 流量/速率类 (NET / DISK / DATA)
+            // 复用 FormatDataSize 算法
             if (k.StartsWith("NET") || k.StartsWith("DISK"))
-            {
-                double kb = v / 1024.0;
-                double mb = kb / 1024.0;
-                return kb >= 1024
-                    ? $"{mb:0.00}MB/s"
-                    : $"{kb:0.0}KB/s";
-            }
+                return FormatDataSize(v, "/s"); // 速率带 /s
+
+            
+            if (k.StartsWith("DATA"))
+                return FormatDataSize(v, "");   // 总量不带 /s
 
             return $"{v:0.0}";
         }
 
         // ============================================================
-        // ② 阈值解析（各类指标）
+        // ★★★ 核心算法：统一的字节单位换算 ★★★
         // ============================================================
-        public static (double warn, double crit) GetThresholds(string key, Theme t)
+        // 供 TrafficHistoryForm 和 FormatValue 共同调用
+        public static string FormatDataSize(double bytes, string suffix = "")
         {
-            string k = key.ToUpperInvariant();
-
-            if (k.Contains("LOAD")) return (t.Thresholds.Load.Warn, t.Thresholds.Load.Crit);
-            if (k.Contains("TEMP")) return (t.Thresholds.Temp.Warn, t.Thresholds.Temp.Crit);
-            if (k.StartsWith("MEM")) return (t.Thresholds.Mem.Warn, t.Thresholds.Mem.Crit);
-            if (k.StartsWith("VRAM")) return (t.Thresholds.Vram.Warn, t.Thresholds.Vram.Crit);
-            if (k.StartsWith("NET") || k.StartsWith("DISK")) return (t.Thresholds.NetKBps.Warn, t.Thresholds.NetKBps.Crit);
-
-            return (t.Thresholds.Load.Warn, t.Thresholds.Load.Crit);
+            string[] sizes = { "KB", "MB", "GB", "TB", "PB" };
+            double len = bytes;
+            int order = 0;
+            
+            // 初始就转换为 KB
+            len /= 1024.0;
+            
+            // 自动升级单位 (>= 1024)
+            while (len >= 1024 && order < sizes.Length - 1)
+            {
+                order++;
+                len /= 1024.0;
+            }
+  
+            // 格式化细节：
+            // 所有单位都保留1位小数 (如 0.1 KB, 1.2 MB)
+            string format = "0.0";
+            
+            // 注意：不加空格(1.2MB)，为了紧凑。如果需要空格可改为 $"{len.ToString(format)} {sizes[order]}{suffix}"
+            return $"{len.ToString(format)}{sizes[order]}{suffix}";
         }
+
+        // ============================================================
+        // 横屏模式专用：极简格式化 (UI 逻辑)
+        // ============================================================
+        public static string FormatHorizontalValue(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return value;
+
+            // 1. 去掉 "/s" (省空间)
+            value = value.Replace("/s", "", StringComparison.OrdinalIgnoreCase).Trim();
+
+            // 2. 拆分解析数值和单位 ，过滤非数字+单位的字符
+            var m = Regex.Match(value, @"^([\d.]+)([A-Za-z%°℃]+)$");
+            if (!m.Success) return value;
+
+            double num = double.Parse(m.Groups[1].Value);
+            string unit = m.Groups[2].Value;
+
+            // 3. 智能缩略：如果数字过大 (>=100)，去掉小数位
+            // 例如: "123.4MB" -> "123MB", "99.5MB" -> "99.5MB"
+            return num >= 100
+                ? ((int)Math.Round(num)) + unit
+                : num.ToString("0.0") + unit;
+        }
+
+
 
         // ============================================================
         // ③ 统一颜色选择
@@ -72,33 +110,85 @@ namespace LiteMonitor.Common
         public static Color GetColor(string key, double value, Theme t, bool isValueText = true)
         {
             if (double.IsNaN(value)) return ThemeManager.ParseColor(t.Color.TextPrimary);
+            
+            // 调用核心逻辑
+            int result = GetColorResult(key, value); 
+
+            if (result == 2) return ThemeManager.ParseColor(isValueText ? t.Color.ValueCrit : t.Color.BarHigh);
+            if (result == 1) return ThemeManager.ParseColor(isValueText ? t.Color.ValueWarn : t.Color.BarMid);
+            return ThemeManager.ParseColor(t.Color.ValueSafe);
+        }
+
+        /// <summary>
+        /// 核心：计算当前指标处于哪个报警级别 (0=Safe, 1=Warn, 2=Crit)
+        /// </summary>
+        public static int GetColorResult(string key, double value)
+        {
+            if (double.IsNaN(value)) return 0;
 
             string k = key.ToUpperInvariant();
 
-            // 1. 网络 / 磁盘
-            if (k.StartsWith("NET") || k.StartsWith("DISK"))
+            // 1. Adaptive (频率/功耗要转化成使用率数值)
+            if (k.Contains("CLOCK") || k.Contains("POWER"))
             {
-                double kbps = value / 1024.0;
-                if (kbps < t.Thresholds.NetKBps.Warn) return ThemeManager.ParseColor(t.Color.ValueSafe);
-                if (kbps < t.Thresholds.NetKBps.Crit) return ThemeManager.ParseColor(t.Color.ValueWarn);
-                return ThemeManager.ParseColor(t.Color.ValueCrit);
+                value = GetAdaptivePercentage(key, value);
             }
 
-            // 2. 频率与功耗 (自适应)
-            if (key.Contains("Clock") || key.Contains("Power"))
-            {
-                double pct = GetAdaptivePercentage(key, value);
-                if (pct >= 0.9) return ThemeManager.ParseColor(t.Color.ValueCrit);
-                if (pct >= 0.6) return ThemeManager.ParseColor(t.Color.ValueWarn);
-                return ThemeManager.ParseColor(t.Color.ValueSafe);
-            }
+            // 2. 使用 GetThresholds 获取阈值
+            var (warn, crit) = GetThresholds(key); // GetThresholds 内部已处理 NET/DISK 分离
+            
+            // 3.NET/DISK 特殊处理：将 B/s 转换为 KB/s
+            if (k.StartsWith("NET") || k.StartsWith("DISK") || k.Contains("DATA"))
+                value /= 1024.0 * 1024.0; 
 
-            // 3. 常规指标
-            var (warn, crit) = GetThresholds(key, t);
-            if (value < warn) return ThemeManager.ParseColor(isValueText ? t.Color.ValueSafe : t.Color.BarLow);
-            if (value < crit) return ThemeManager.ParseColor(isValueText ? t.Color.ValueWarn : t.Color.BarMid);
-            return ThemeManager.ParseColor(isValueText ? t.Color.ValueCrit : t.Color.BarHigh);
+            if (value >= crit) return 2; // Crit
+            if (value >= warn) return 1; // Warn
+            
+            return 0; // Safe
         }
+
+        
+        // ============================================================
+        // ② 阈值解析（各类指标）
+        // ============================================================
+        public static (double warn, double crit) GetThresholds(string key)
+        {
+            var cfg = Settings.Load(); 
+            string k = key.ToUpperInvariant();
+            var th = cfg.Thresholds;
+
+            // Load, VRAM, Mem，CLOCK/POWER
+            if (k.Contains("LOAD") || k.Contains("VRAM") || k.Contains("MEM")||k.Contains("CLOCK") || k.Contains("POWER"))
+                return (th.Load.Warn, th.Load.Crit);
+            
+            // Temp
+            if (k.Contains("TEMP"))
+                return (th.Temp.Warn, th.Temp.Crit);
+
+            // Disk R/W (共享阈值)
+            if (k.StartsWith("DISK"))
+                return (th.DiskIOMB.Warn, th.DiskIOMB.Crit);
+
+            // NET Up/Down (分离阈值)
+            if (k.StartsWith("NET"))
+            {
+                if (k.Contains("UP"))
+                    return (th.NetUpMB.Warn, th.NetUpMB.Crit);
+                else // NET.DOWN
+                    return (th.NetDownMB.Warn, th.NetDownMB.Crit);
+            }
+
+            if (k.Contains("DATA"))
+            {
+                if (k.Contains("UP"))
+                    return (th.DataUpMB.Warn, th.DataUpMB.Crit);
+                else // DATA.DOWN
+                    return (th.DataDownMB.Warn, th.DataDownMB.Crit);
+            }
+
+            return (th.Load.Warn, th.Load.Crit);
+        }
+
 
         // ============================================================
         // ④ 通用图形
@@ -164,7 +254,7 @@ namespace LiteMonitor.Common
                 percent = value / 100.0;
 
                 // 颜色策略 (原有阈值)
-                var (warn, crit) = GetThresholds(key, t);
+                var (warn, crit) = GetThresholds(key);
                 if (value >= crit) colorCode = t.Color.BarHigh;
                 else if (value >= warn) colorCode = t.Color.BarMid;
                 else colorCode = t.Color.BarLow;
@@ -192,36 +282,6 @@ namespace LiteMonitor.Common
                     g.FillPath(new SolidBrush(ThemeManager.ParseColor(colorCode)), fgPath);
                 }
             }
-        }
-
-        // ============================================================
-        // ⑥ 横屏模式 格式化数值 (修复 1024 进制问题)
-        // ============================================================
-        public static string FormatHorizontalValue(string value)
-        {
-            if (string.IsNullOrWhiteSpace(value)) return value;
-
-            value = value.Replace("/s", "", StringComparison.OrdinalIgnoreCase).Trim();
-            //value = value.Replace("Hz", "", StringComparison.OrdinalIgnoreCase).Trim();
-            var m = Regex.Match(value, @"^([\d.]+)([A-Za-z%°℃]+)$");
-            if (!m.Success) return value;
-
-            double num = double.Parse(m.Groups[1].Value);
-            string unit = m.Groups[2].Value;
-
-            // 只有 B, KB, MB 等单位才需要 /1024 处理
-            // Hz, W, % 等单位应保持 10 进制或不缩放
-            bool isMemoryOrNet = unit.Contains("B", StringComparison.OrdinalIgnoreCase);
-
-            if (unit.Length <= 3 && isMemoryOrNet)
-            {
-                if (num >= 1000) return (num / 1024.0).ToString("0.0") + "MB"; // 针对 KB -> MB
-            }
-
-            // 统一小数位
-            return num >= 100
-                ? ((int)Math.Round(num)) + unit
-                : num.ToString("0.0") + unit;
         }
 
         // ============================================================

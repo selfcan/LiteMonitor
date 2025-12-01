@@ -294,6 +294,18 @@ namespace LiteMonitor
                 net.Add(new MetricItem { Key = "NET.Down", Label = LanguageManager.T("Items.NET.Down") });
             if (net.Count > 0) _groups.Add(new GroupLayoutInfo("NET", net));
 
+            // === DATA (今日流量 - 两列布局) ===
+            // 假设 TrafficDay 是控制 Data 组的总开关
+            var data = new List<MetricItem>();
+            if (_cfg.Enabled.TrafficDay)
+            {
+                // 注意：UILayout.cs 必须被修改以将 "DATA" 视为双列组
+                data.Add(new MetricItem { Key = "DATA.DayUp", Label = LanguageManager.T("Items.DATA.DayUp") });
+                data.Add(new MetricItem { Key = "DATA.DayDown", Label = LanguageManager.T("Items.DATA.DayDown") });
+            }
+            if (data.Count > 0) _groups.Add(new GroupLayoutInfo("DATA", data));
+        
+
             // ★★★ 在方法最后，添加这段初始化代码 ★★★
             // 强制同步当前值，防止动画重置
             foreach (var g in _groups)
@@ -391,6 +403,16 @@ namespace LiteMonitor
                 {
                     Top = _cfg.Enabled.NetUp ? new MetricItem { Key = "NET.Up" } : null,
                     Bottom = _cfg.Enabled.NetDown ? new MetricItem { Key = "NET.Down" } : null
+                });
+            }
+
+            // ★★★ [新增] DATA Day Up / Down (今日流量) ★★★
+            if (_cfg.Enabled.TrafficDay)
+            {
+                cols.Add(new Column
+                {
+                    Top = new MetricItem { Key = "DATA.DayUp" },
+                    Bottom = new MetricItem { Key = "DATA.DayDown" }
                 });
             }
 

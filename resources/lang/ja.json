@@ -5,7 +5,8 @@
     "GPU": "🎮GPU",
     "MEM": "💾メモリ",
     "DISK": "📀ディスク",
-    "NET": "🌐ネットワーク"
+    "NET": "🌐ネットワーク",
+    "DATA": "📈トラフィック統計"
   },
   "Items": {
     "CPU.Load": "CPU使用率",
@@ -21,7 +22,9 @@
     "DISK.Read": "読み取り",
     "DISK.Write": "書き込み",
     "NET.Up": "アップロード",
-    "NET.Down": "ダウンロード"
+    "NET.Down": "ダウンロード",
+    "DATA.DayUp": "今日⏫",
+    "DATA.DayDown": "今日⏬"
   },
   "Short": {
     "CPU.Load": "CPU",
@@ -37,7 +40,9 @@
     "DISK.Read": "読込",
     "DISK.Write": "書込",
     "NET.Up": "⏫",
-    "NET.Down": "⏬"
+    "NET.Down": "⏬",
+    "DATA.DayUp": "⏫",
+    "DATA.DayDown": "⏬"
   },
   "Menu": {
     "TopMost": "常に最前面",
@@ -46,13 +51,16 @@
     "Horizontal": "横バー",
     "TaskbarShow": "タスクバーに表示",
     "HideMainForm": "パネルを非表示",
-    "HideTrayIcon": "トレイアイコンを非表示",
+    "HideTrayIcon": "トレイアイコン非表示",
     "Opacity": "透明度",
     "ShowItems": "項目表示",
     "Theme": "テーマ",
+    "SpeedTest": "速度テスト",
+    "Traffic": "トラフィック履歴",
     "More": "その他",
     "ThemeEditor": "テーマエディタ",
-    "SpeedTest": "速度テスト",
+    "thresholds": "アラート閾値",
+    "AlertTemp": "高温アラート",
     "ClickThrough": "クリック透過",
     "AutoHide": "端で自動非表示",
     "ClampToScreen": "画面外に出さない",
@@ -64,7 +72,6 @@
     "Auto": "自動モード",
     "Language": "言語",
     "AutoStart": "自動起動",
-    "CheckUpdate": "更新を確認",
     "About": "LiteMonitorについて",
     "Exit": "終了"
   }

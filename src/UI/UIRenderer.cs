@@ -139,7 +139,7 @@ namespace LiteMonitor
             // Value (居中底部)
             string valText = UIUtils.FormatValue(it.Key, it.Value); // 这里用 Raw Value 或者 DisplayValue 均可
             // 窄屏处理
-            if (t.Layout.Width < 220*t.Layout.LayoutScale) valText = UIUtils.FormatHorizontalValue(valText);
+            if (t.Layout.Width < 240*t.Layout.LayoutScale) valText = UIUtils.FormatHorizontalValue(valText);
             Color valColor = UIUtils.GetColor(it.Key, it.Value ?? 0, t);
 
             TextRenderer.DrawText(g, valText, t.FontValue, it.ValueRect,

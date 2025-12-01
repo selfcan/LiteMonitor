@@ -5,7 +5,8 @@
     "GPU": "🎮GPU",
     "MEM": "💾Memoria",
     "DISK": "📀Disco",
-    "NET": "🌐Red"
+    "NET": "🌐Red",
+    "DATA": "📈tráfico"
   },
   "Items": {
     "CPU.Load": "Uso de CPU",
@@ -14,14 +15,16 @@
     "CPU.Power": "Potencia CPU",
     "GPU.Load": "Uso de GPU",
     "GPU.Temp": "Temp. GPU",
-    "GPU.VRAM": "Uso de VRAM",
+    "GPU.VRAM": "Uso VRAM",
     "GPU.Clock": "Frec. GPU",
     "GPU.Power": "Potencia GPU",
-    "MEM.Load": "Uso de memoria",
+    "MEM.Load": "Uso memoria",
     "DISK.Read": "Lectura",
     "DISK.Write": "Escritura",
     "NET.Up": "Subida",
-    "NET.Down": "Descarga"
+    "NET.Down": "Descarga",
+    "DATA.DayUp": "Subida hoy",
+    "DATA.DayDown": "Descarga hoy"
   },
   "Short": {
     "CPU.Load": "CPU",
@@ -37,7 +40,9 @@
     "DISK.Read": "Lect.",
     "DISK.Write": "Escr.",
     "NET.Up": "⏫",
-    "NET.Down": "⏬"
+    "NET.Down": "⏬",
+    "DATA.DayUp": "⏫",
+    "DATA.DayDown": "⏬"
   },
   "Menu": {
     "TopMost": "Siempre visible",
@@ -46,25 +51,27 @@
     "Horizontal": "Barra horizontal",
     "TaskbarShow": "Mostrar en barra",
     "HideMainForm": "Ocultar panel",
-    "HideTrayIcon": "Ocultar icono de bandeja",
+    "HideTrayIcon": "Ocultar icono bandeja",
     "Opacity": "Opacidad",
     "ShowItems": "Mostrar elementos",
     "Theme": "Tema",
+    "SpeedTest": "Prueba de velocidad",
+    "Traffic": "Historial tráfico",
     "More": "Más",
     "ThemeEditor": "Editor de temas",
-    "SpeedTest": "Prueba de velocidad",
+    "thresholds": "Umbrales alerta",
+    "AlertTemp": "Alerta temperatura",
     "ClickThrough": "Permitir clics",
     "AutoHide": "Ocultar al borde",
     "ClampToScreen": "Limitar a pantalla",
-    "Refresh": "Frecuencia de refresco",
-    "Width": "Ancho del panel",
+    "Refresh": "Frecuencia refresco",
+    "Width": "Ancho panel",
     "Scale": "Escala UI",
-    "NetworkSource": "Fuente de red",
-    "DiskSource": "Fuente de disco",
+    "NetworkSource": "Fuente red",
+    "DiskSource": "Fuente disco",
     "Auto": "Automático",
     "Language": "Idioma",
     "AutoStart": "Inicio automático",
-    "CheckUpdate": "Buscar actualizaciones",
     "About": "Acerca de LiteMonitor",
     "Exit": "Salir"
   }

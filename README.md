@@ -17,7 +17,10 @@ LiteMonitor 是一款基于 **Windows** 的现代化桌面系统监控工具。
 ![LiteMonitor 横屏/任务栏显示](./resources/screenshots/overview3.png)
 
 ###  🟢 新增网络测速功能 
-![LiteMonitor 网速测试](./resources/screenshots/overview4.png)  👉 ![LiteMonitor 菜单](./resources/screenshots/overview6.png) ![LiteMonitor 菜单](./resources/screenshots/overview5.png)
+![LiteMonitor 网速测试](./resources/screenshots/overview4.png)  👉 ![LiteMonitor 菜单](./resources/screenshots/overview5.jpg)
+
+###  🟢 新增历史流量统计
+![LiteMonitor 主题编辑器](./resources/screenshots/overview7.png)
 
 ###  🟢 新增主题编辑器
 ![LiteMonitor 主题编辑器](./resources/screenshots/overview2.jpg)
@@ -33,6 +36,7 @@ LiteMonitor 是一款基于 **Windows** 的现代化桌面系统监控工具。
 | 💾 **内存（Memory）** | 显示系统内存使用率，清晰了解整体内存负载水平。 |
 | 📀 **磁盘（Disk）**   | 监控磁盘读取与写入速度（KB/s、MB/s），帮助分析存储 I/O 活跃情况。支持自动/手动选择磁盘。 |
 | 🌐 **网络（Network）** | 实时显示上传与下载速度（KB/s、MB/s），提供轻量级网络流量监控。支持自动/手动选择网卡。 |
+| 📈 **流量统计（Traffic Statistics）** | 统计每日上传与下载流量，帮助分析网络使用习惯。 |
 
 > 💡 LiteMonitor 持续完善中，如需更多监控项或功能支持，欢迎在 [GitHub Issues](https://github.com/Diorser/LiteMonitor/issues) 中反馈建议！
 

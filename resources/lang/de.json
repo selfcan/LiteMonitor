@@ -5,15 +5,16 @@
     "GPU": "🎮GPU",
     "MEM": "💾Arbeitsspeicher",
     "DISK": "📀Festplatte",
-    "NET": "🌐Netzwerk"
+    "NET": "🌐Netzwerk",
+    "DATA": "📈Traffic"
   },
   "Items": {
     "CPU.Load": "CPU-Auslastung",
-    "CPU.Temp": "CPU-Temperatur",
+    "CPU.Temp": "CPU-Temp",
     "CPU.Clock": "CPU-Takt",
     "CPU.Power": "CPU-Leistung",
     "GPU.Load": "GPU-Auslastung",
-    "GPU.Temp": "GPU-Temperatur",
+    "GPU.Temp": "GPU-Temp",
     "GPU.VRAM": "VRAM-Nutzung",
     "GPU.Clock": "GPU-Takt",
     "GPU.Power": "GPU-Leistung",
@@ -21,7 +22,9 @@
     "DISK.Read": "Lesen",
     "DISK.Write": "Schreiben",
     "NET.Up": "Upload",
-    "NET.Down": "Download"
+    "NET.Down": "Download",
+    "DATA.DayUp": "Heute Up",
+    "DATA.DayDown": "Heute Down"
   },
   "Short": {
     "CPU.Load": "CPU",
@@ -37,7 +40,9 @@
     "DISK.Read": "L",
     "DISK.Write": "S",
     "NET.Up": "⏫",
-    "NET.Down": "⏬"
+    "NET.Down": "⏬",
+    "DATA.DayUp": "⏫",
+    "DATA.DayDown": "⏬"
   },
   "Menu": {
     "TopMost": "Immer im Vordergrund",
@@ -50,9 +55,12 @@
     "Opacity": "Transparenz",
     "ShowItems": "Elemente anzeigen",
     "Theme": "Design",
+    "SpeedTest": "Geschwindigkeitstest",
+    "Traffic": "Traffic-Historie",
     "More": "Mehr",
     "ThemeEditor": "Design-Editor",
-    "SpeedTest": "Geschwindigkeitstest",
+    "thresholds": "Alarmschwellen",
+    "AlertTemp": "Temperaturalarm",
     "ClickThrough": "Klicks durchlassen",
     "AutoHide": "Auto am Rand ausblenden",
     "ClampToScreen": "Im Bildschirm halten",
@@ -64,7 +72,6 @@
     "Auto": "Automatisch",
     "Language": "Sprache",
     "AutoStart": "Autostart",
-    "CheckUpdate": "Nach Updates suchen",
     "About": "Über LiteMonitor",
     "Exit": "Beenden"
   }

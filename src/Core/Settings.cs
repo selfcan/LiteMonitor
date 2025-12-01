@@ -53,14 +53,26 @@ namespace LiteMonitor
         public float RecordedMaxCpuClock { get; set; } = 3800.0f; // 之前是 3000，建议改为 3800 (现代 CPU 睿频基本都能轻松过 3.8G)
         public float RecordedMaxGpuPower { get; set; } = 80.0f; // 之前是 50W，建议改为 80W (甜品级显卡的起步功耗)
         public float RecordedMaxGpuClock { get; set; } = 1500.0f; // 之前是 1000，建议改为 1500 (绝大多数独显都能达到)
+        
 
         // [新增] 高温报警配置
         public bool AlertTempEnabled { get; set; } = true; // 总开关
         public int AlertTempThreshold { get; set; } = 80;   // 统一阈值 (默认80)
 
+        // [新增] 报警阈值设置
+        public ThresholdsSet Thresholds { get; set; } = new ThresholdsSet();
+
         // [新增] 防抖记录 (不存入json)
         [System.Text.Json.Serialization.JsonIgnore] 
         public DateTime LastAlertTime { get; set; } = DateTime.MinValue;
+
+        // [新增] 流量统计 - 本次运行 (Session)
+        // 加 JsonIgnore 标签，不保存到 Settings.json，每次启动重置为 0
+        [System.Text.Json.Serialization.JsonIgnore] 
+        public long SessionUploadBytes { get; set; } = 0;
+
+        [System.Text.Json.Serialization.JsonIgnore]
+        public long SessionDownloadBytes { get; set; } = 0;
 
         // [新增] 记录上次保存时间
         [System.Text.Json.Serialization.JsonIgnore] // 别把这个字段存进 json 文件里
@@ -92,8 +104,6 @@ namespace LiteMonitor
             }
         }
         }
-
-
 
         // ====== 显示项（整组/子项开关）======
         public EnabledSet Enabled { get; set; } = new();
@@ -132,6 +142,36 @@ namespace LiteMonitor
         }
     }
 
+     // ★★★ [新增] 阈值结构定义 ★★★
+    public class ThresholdsSet
+    {
+        // 1. 通用负载/内存/显存/频率/功耗 (CPU Load, Temp, Mem Load, etc.)
+        public ValueRange Load { get; set; } = new ValueRange { Warn = 60, Crit = 85 };
+        public ValueRange Temp { get; set; } = new ValueRange { Warn = 60, Crit = 85 }; // 报警温度 80°C
+        //public ValueRange Adaptive { get; set; } = new ValueRange { Warn = 60, Crit = 85 }; //智能计算
+
+        // 2. 磁盘 (Disk R/W 共享阈值，单位 MB/s)
+        public ValueRange DiskIOMB { get; set; } = new ValueRange { Warn = 2, Crit = 8 }; // 10MB/s and 50MB/s
+
+        // 3. 网络速率 (NET Up/Down 分离，单位 MB/s)
+        public ValueRange NetUpMB { get; set; } = new ValueRange { Warn = 1, Crit = 2 };     // 上传：1MB/s and 2MB/s
+        public ValueRange NetDownMB { get; set; } = new ValueRange { Warn = 2, Crit = 8 };   // 下载：2MB/s and 8MB/s
+
+        // 4. 流量总量 (Data Up/Down 分离，单位 MB)
+        public ValueRange DataUpMB { get; set; } = new ValueRange { Warn = 512, Crit = 1024 };    // 上传总量：0.5GB and 2GB
+        public ValueRange DataDownMB { get; set; } = new ValueRange { Warn = 2048, Crit = 5096 };  // 下载总量：5GB and 15GB
+
+        
+    }
+
+    public class ValueRange
+    {
+        public double Warn { get; set; } = 0;
+        public double Crit { get; set; } = 0;
+    }
+    /// <summary>
+    /// 显示项（整组/子项开关）
+    /// </summary>
     public class EnabledSet
     {
         public bool CpuLoad { get; set; } = true;
@@ -153,5 +193,7 @@ namespace LiteMonitor
 
         public bool NetUp { get; set; } = true;
         public bool NetDown { get; set; } = true;
+        // [新增] 今日流量统计开关
+        public bool TrafficDay { get; set; } = true;
     }
 }

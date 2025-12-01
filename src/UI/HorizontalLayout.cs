@@ -218,7 +218,8 @@ namespace LiteMonitor
 
             bool isIO =
                 key.Contains("READ") || key.Contains("WRITE") ||
-                key.Contains("UP") || key.Contains("DOWN");
+                key.Contains("UP") || key.Contains("DOWN") ||
+                key.Contains("DAYUP") || key.Contains("DAYDOWN");
 
             return isIO ? MAX_VALUE_IO : MAX_VALUE_NORMAL;
         }

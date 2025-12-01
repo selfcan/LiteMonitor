@@ -88,29 +88,13 @@ namespace LiteMonitor
         private static Color PickColor(string key, double v, bool light)
         {
             if (double.IsNaN(v)) return light ? LABEL_LIGHT : LABEL_DARK;
+            
+            // 调用核心逻辑
+            int result = UIUtils.GetColorResult(key, v); 
 
-            // === 1. 频率与功耗 (调用 UIUtils 算法) ===
-            if (key.Contains("Clock") || key.Contains("Power"))
-            {
-                // ★★★ 直接调用 UIUtils 的公共方法 ★★★
-                double pct = UIUtils.GetAdaptivePercentage(key, v);
-
-                // 依然使用任务栏专用的高对比度颜色 (红/黄/绿)
-                if (pct >= 0.9) return light ? CRIT_LIGHT : CRIT_DARK;
-                if (pct >= 0.6) return light ? WARN_LIGHT : WARN_DARK;
-                return light ? SAFE_LIGHT : SAFE_DARK;
-            }
-
-            // === 2. 网络 / 磁盘 (单位换算) ===
-            if (key.StartsWith("NET") || key.StartsWith("DISK"))
-                v /= 1024.0;
-
-            // === 3. 常规阈值判断 (Load/Temp/Net/Disk) ===
-            var (warn, crit) = UIUtils.GetThresholds(key, ThemeManager.Current);
-
-            if (v >= crit) return light ? CRIT_LIGHT : CRIT_DARK;
-            if (v >= warn) return light ? WARN_LIGHT : WARN_DARK;
-            return light ? SAFE_LIGHT : SAFE_DARK;
+            if (result == 2) return light ? CRIT_LIGHT : CRIT_DARK; // 翻译为硬编码的红色
+            if (result == 1) return light ? WARN_LIGHT : WARN_DARK; // 翻译为硬编码的黄色
+            return light ? SAFE_LIGHT : SAFE_DARK;                   // 翻译为硬编码的绿色
         }
     }
 }

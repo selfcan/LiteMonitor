@@ -5,7 +5,8 @@
     "GPU": "🎮GPU",
     "MEM": "💾内存",
     "DISK": "📀磁盘",
-    "NET": "🌐网络"
+    "NET": "🌐网络",
+    "DATA": "📈流量统计"
   },
   "Items": {
     "CPU.Load": "CPU使用率",
@@ -21,7 +22,9 @@
     "DISK.Read": "读取",
     "DISK.Write": "写入",
     "NET.Up": "上传",
-    "NET.Down": "下载"
+    "NET.Down": "下载",
+    "DATA.DayUp": "今日上传",
+    "DATA.DayDown": "今日下载"
   },
   "Short": {
     "CPU.Load": "CPU",
@@ -36,8 +39,10 @@
     "MEM.Load": "内存",
     "DISK.Read": "读",
     "DISK.Write": "写",
-    "NET.Up": "⏫",
-    "NET.Down": "⏬"
+    "NET.Up": "🔼",
+    "NET.Down": "🔽",
+    "DATA.DayUp": "⏫",
+    "DATA.DayDown": "⏬"
   },
   "Menu": {
     "TopMost": "总是置顶",
@@ -48,11 +53,13 @@
     "HideMainForm": "隐藏主界面",
     "HideTrayIcon": "隐藏托盘图标",
     "Opacity": "透明度",
-    "ShowItems": "显示项",
+    "ShowItems": "显示监控项",
     "Theme": "主题",
+    "SpeedTest": "网速测试",
+    "Traffic": "历史流量统计",
     "More": "更多功能",
     "ThemeEditor": "主题编辑器",
-    "SpeedTest": "网速测试",
+    "thresholds": "报警阈值设置",
     "AlertTemp": "高温报警通知",
     "ClickThrough": "鼠标穿透",
     "AutoHide": "靠边自动隐藏",
@@ -65,7 +72,6 @@
     "Auto": "自动模式",
     "Language": "语言/Language",
     "AutoStart": "开机启动",
-    "CheckUpdate": "检查更新",
     "About": "关于 LiteMonitor",
     "Exit": "退出"
   }

@@ -3,6 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using LibreHardwareMonitor.Hardware;
+using System.Net.NetworkInformation;
+using LiteMonitor.src.Core; // 必须引用
+using Debug = System.Diagnostics.Debug;
 
 namespace LiteMonitor.src.System
 {
@@ -23,6 +26,20 @@ namespace LiteMonitor.src.System
         private readonly Dictionary<string, ISensor> _map = new();
         private readonly Dictionary<string, float> _lastValid = new();
         private DateTime _lastMapBuild = DateTime.MinValue;
+
+         // 定义网卡扫描时间标记
+        private DateTime _startTime = DateTime.Now;      // 启动时间
+        
+        private DateTime _lastSlowScan = DateTime.Now;   //  初始值为 Now，强迫程序启动时先等 3 秒再进行慢速全盘扫描，防止卡顿
+
+       // --- 流量统计专用字段 ---
+        private DateTime _lastTrafficTime = DateTime.Now; // 积分时间戳
+        private DateTime _lastTrafficSave = DateTime.Now; // 自动保存时间戳
+
+        // 原生网络对象缓存
+        private NetworkInterface? _nativeNetAdapter;
+        private long _lastNativeUpload = 0;
+        private long _lastNativeDownload = 0;
 
         // =======================================================================
         // [缓存] 高性能读取缓存 (避免 LINQ)
@@ -84,15 +101,17 @@ namespace LiteMonitor.src.System
         // [生命周期] 定时更新 (终极优化版)
         // =======================================================================
         
-        // 1. 定义时间标记
-        private DateTime _startTime = DateTime.Now;      // 启动时间
-        // [核心修复] 初始值为 Now，强迫程序启动时先等 3 秒再进行慢速全盘扫描，防止卡顿
-        private DateTime _lastSlowScan = DateTime.Now;   
-
         public void UpdateAll()
         {
             try
             {
+                // [新增] 计算时间差 (用于流量积分：流量 = 速率 * 时间)
+                DateTime now = DateTime.Now;
+                double timeDelta = (now - _lastTrafficTime).TotalSeconds;
+                _lastTrafficTime = now;
+                // 防止休眠唤醒后的巨大数值
+                if (timeDelta > 5.0) timeDelta = 0;
+
                 // 1. 预判开关
                 bool needCpu = _cfg.Enabled.CpuLoad || _cfg.Enabled.CpuTemp || _cfg.Enabled.CpuClock || _cfg.Enabled.CpuPower;
                 bool needGpu = _cfg.Enabled.GpuLoad || _cfg.Enabled.GpuTemp || _cfg.Enabled.GpuVram || _cfg.Enabled.GpuClock || _cfg.Enabled.GpuPower;
@@ -130,6 +149,7 @@ namespace LiteMonitor.src.System
                             if (isTarget)
                             {
                                 hw.Update(); // 特权：无视保护期，无视虚拟身份，每秒全速更新 (秒出数据)
+                                AccumulateTraffic(hw, timeDelta);//// ★★★ 核心：累加流量 ★★★
                             }
                             else if (isStartupPhase || IsVirtualNetwork(hw.Name))
                             {
@@ -173,9 +193,184 @@ namespace LiteMonitor.src.System
                 // 如果执行了慢速扫描，重置计时器
                 if (isSlowScanTick) _lastSlowScan = DateTime.Now;
 
+                // ★★★ 核心：每 60 秒自动保存一次流量数据 ★★★
+                if ((DateTime.Now - _lastTrafficSave).TotalSeconds > 60)
+                {
+                    TrafficLogger.Save();
+                    _lastTrafficSave = DateTime.Now;
+                }
+
                 OnValuesUpdated?.Invoke();
             }
             catch { }
+        }
+
+       // [修复版] 智能匹配 (支持 "以太网" 这种连接名)
+        private void MatchNativeNetworkAdapter(string lhmName)
+        {
+            if (_nativeNetAdapter != null) return;
+
+            try
+            {
+                var nics = NetworkInterface.GetAllNetworkInterfaces();
+                var lhmTokens = SplitTokens(lhmName); // 预分词
+
+                foreach (var nic in nics)
+                {
+                    // -------------------------------------------------------
+                    // 1. 匹配连接名称 (Connection Name) -> 解决 "以太网/WLAN" 问题
+                    // -------------------------------------------------------
+                    // 如果 LHM 返回的是 "以太网"，而 nic.Name 也是 "以太网"，直接命中！
+                    if (nic.Name.Equals(lhmName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        SetNativeAdapter(nic);
+                        Debug.WriteLine($"[匹配成功] 策略:连接名 | LHM:{lhmName} == Native:{nic.Name}");
+                        return;
+                    }
+
+                    // -------------------------------------------------------
+                    // 2. 匹配硬件描述 (Interface Description) -> 解决 "Realtek..." 问题
+                    // -------------------------------------------------------
+                    if (nic.Description.Equals(lhmName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        SetNativeAdapter(nic);
+                        Debug.WriteLine($"[匹配成功] 策略:硬件名 | LHM:{lhmName} == Native:{nic.Description}");
+                        return;
+                    }
+
+                    // -------------------------------------------------------
+                    // 3. 模糊分词匹配 (Fuzzy) -> 解决 "Intel(R) #2" 这种微小差异
+                    // -------------------------------------------------------
+                    // 只有当名字里包含英文单词时才进行分词匹配，防止 "以太网" 这种短词误判
+                    if (lhmTokens.Count > 0 && lhmName.Length > 5) 
+                    {
+                        var nicTokens = SplitTokens(nic.Description);
+                        int matchCount = lhmTokens.Intersect(nicTokens, StringComparer.OrdinalIgnoreCase).Count();
+                        
+                        if (matchCount > 2 && (double)matchCount / lhmTokens.Count > 0.6)
+                        {
+                            SetNativeAdapter(nic);
+                            Debug.WriteLine($"[匹配成功] 策略:模糊 | LHM:{lhmName} ≈ Native:{nic.Description}");
+                            return;
+                        }
+                    }
+                }
+            }
+            catch { _nativeNetAdapter = null; }
+        }
+
+        // 分词辅助
+        private List<string> SplitTokens(string input)
+        {
+            return input.Split(new[] { ' ', '(', ')', '[', ']', '-', '_', '#' }, StringSplitOptions.RemoveEmptyEntries).ToList();
+        }
+
+        private void SetNativeAdapter(NetworkInterface nic)
+        {
+            _nativeNetAdapter = nic;
+            // 初始化基准值
+            var stats = nic.GetIPStatistics();
+            _lastNativeUpload = stats.BytesSent;
+            _lastNativeDownload = stats.BytesReceived;
+        }
+
+        // [终极版] 智能流量累加 (原生精准 + LHM保底)
+        private void AccumulateTraffic(IHardware hw, double seconds)
+        {
+            long finalUp = 0;
+            long finalDown = 0;
+
+            // -----------------------------------------------------
+            // A. 先算一个 LHM 的估算值 (作为保底/校验)
+            // -----------------------------------------------------
+            ISensor? upSensor = null;
+            ISensor? downSensor = null;
+            
+            // 复用 Logic.cs 里的关键字查找
+            foreach (var s in hw.Sensors)
+            {
+                if (s.SensorType != SensorType.Throughput) continue;
+                // _upKW 和 _downKW 定义在 Logic.cs 中，可以直接用
+                if (_upKW.Any(k => s.Name.IndexOf(k, StringComparison.OrdinalIgnoreCase) >= 0)) upSensor ??= s;
+                if (_downKW.Any(k => s.Name.IndexOf(k, StringComparison.OrdinalIgnoreCase) >= 0)) downSensor ??= s;
+            }
+
+            // LHM 估算值 (Bytes)
+            long lhmUpDelta = (long)((upSensor?.Value ?? 0) * seconds);
+            long lhmDownDelta = (long)((downSensor?.Value ?? 0) * seconds);
+
+            // -----------------------------------------------------
+            // B. 尝试获取 原生精准值
+            // -----------------------------------------------------
+            MatchNativeNetworkAdapter(hw.Name);
+            
+            bool nativeValid = false;
+            long nativeUpDelta = 0;
+            long nativeDownDelta = 0;
+
+            if (_nativeNetAdapter != null)
+            {
+                try
+                {
+                    // 使用 GetIPStatistics 以支持 IPv6
+                    var stats = _nativeNetAdapter.GetIPStatistics();
+                    long currUp = stats.BytesSent;
+                    long currDown = stats.BytesReceived;
+
+                    // 计算增量 (处理溢出或重置)
+                    if (currUp >= _lastNativeUpload) nativeUpDelta = currUp - _lastNativeUpload;
+                    if (currDown >= _lastNativeDownload) nativeDownDelta = currDown - _lastNativeDownload;
+
+                    _lastNativeUpload = currUp;
+                    _lastNativeDownload = currDown;
+                    nativeValid = true;
+                }
+                catch 
+                {
+                    _nativeNetAdapter = null; // 读失败了，扔掉
+                }
+            }
+
+            // -----------------------------------------------------
+            // C. 决策时刻：到底信谁？
+            // -----------------------------------------------------
+            if (nativeValid)
+            {
+                // 防呆检查：
+                // 如果原生读数是 0 (没流量)，但 LHM 显示速度很快 (> 50KB/s)
+                // 说明我们匹配错网卡了！(匹配到了一个同名的闲置网卡)
+                if ((nativeUpDelta + nativeDownDelta == 0) && (lhmUpDelta + lhmDownDelta > 51200))
+                {
+                    // 放弃原生，使用 LHM 保底
+                    finalUp = lhmUpDelta;
+                    finalDown = lhmDownDelta;
+                    
+                    // 既然匹配错了，就清空，下次重新找
+                    _nativeNetAdapter = null; 
+                }
+                else
+                {
+                    // 正常情况，原生优先 (精准)
+                    finalUp = nativeUpDelta;
+                    finalDown = nativeDownDelta;
+                }
+            }
+            else
+            {
+                // 没有原生对象，只能用 LHM
+                finalUp = lhmUpDelta;
+                finalDown = lhmDownDelta;
+            }
+
+            // -----------------------------------------------------
+            // D. 存入数据
+            // -----------------------------------------------------
+            if (finalUp > 0 || finalDown > 0)
+            {
+                _cfg.SessionUploadBytes += finalUp;
+                _cfg.SessionDownloadBytes += finalDown;
+                TrafficLogger.AddTraffic(finalUp, finalDown);
+            }
         }
 
         // [新增] 辅助方法：复用 Logic.cs 中的关键字判断是否为虚拟网卡

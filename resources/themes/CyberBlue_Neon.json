@@ -38,27 +38,5 @@
     "barMid": "#FFC400",
     "barHigh": "#FF1744",
     "groupBackground": "#111C2F"
-  },
-  "thresholds": {
-    "load": {
-      "warn": 65,
-      "crit": 85
-    },
-    "temp": {
-      "warn": 50,
-      "crit": 70
-    },
-    "vram": {
-      "warn": 65,
-      "crit": 85
-    },
-    "mem": {
-      "warn": 65,
-      "crit": 85
-    },
-    "netKBps": {
-      "warn": 2048,
-      "crit": 8192
-    }
   }
 }

@@ -74,7 +74,7 @@ namespace LiteMonitor
             if (!Visible) return;
             if (_uiDragging || ContextMenuStrip?.Visible == true) return;
 
-            // ==== 关键修改：基于“当前窗体所在屏幕”计算区域 ====
+            // ==== 关键修改：基于"当前窗体所在屏幕"计算区域 ====
             var center = new Point(Left + Width / 2, Top + Height / 2);
             var screen = Screen.FromPoint(center);
             var area = screen.WorkingArea;
@@ -149,41 +149,63 @@ namespace LiteMonitor
             {
                 const int hoverBand = 30;
 
+                // 关键修复：只有当鼠标在隐藏的面板区域内时，才显示面板
+                bool isMouseOnHiddenPanel = false;
+                
                 if (!isHorizontal)
                 {
-                    // ======== 竖屏：左右弹出 ========
-                    if (_dock == DockEdge.Right && cursor.X >= area.Right - hoverBand)
-                    {
-                        Left = area.Right - Width;
-                        _isHidden = false;
-                        _dock = DockEdge.None;
-                    }
-                    else if (_dock == DockEdge.Left && cursor.X <= area.Left + hoverBand)
-                    {
-                        Left = area.Left;
-                        _isHidden = false;
-                        _dock = DockEdge.None;
-                    }
+                    // 竖屏模式
+                    if (_dock == DockEdge.Right)
+                        isMouseOnHiddenPanel = cursor.X >= area.Right - _hideWidth && cursor.Y >= Top && cursor.Y <= Top + Height;
+                    else if (_dock == DockEdge.Left)
+                        isMouseOnHiddenPanel = cursor.X <= area.Left + _hideWidth && cursor.Y >= Top && cursor.Y <= Top + Height;
                 }
                 else
                 {
-                    // ======== 横屏：上下弹出 ========
-                    if (_dock == DockEdge.Bottom && cursor.Y >= area.Bottom - hoverBand)
+                    // 横屏模式
+                    if (_dock == DockEdge.Bottom)
+                        isMouseOnHiddenPanel = cursor.Y >= area.Bottom - _hideWidth && cursor.X >= Left && cursor.X <= Left + Width;
+                    else if (_dock == DockEdge.Top)
+                        isMouseOnHiddenPanel = cursor.Y <= area.Top + _hideWidth && cursor.X >= Left && cursor.X <= Left + Width;
+                }
+
+                if (isMouseOnHiddenPanel)
+                {
+                    if (!isHorizontal)
                     {
-                        Top = area.Bottom - Height;
-                        _isHidden = false;
-                        _dock = DockEdge.None;
+                        // ======== 竖屏：左右弹出 ========
+                        if (_dock == DockEdge.Right && cursor.X >= area.Right - hoverBand)
+                        {
+                            Left = area.Right - Width;
+                            _isHidden = false;
+                            _dock = DockEdge.None;
+                        }
+                        else if (_dock == DockEdge.Left && cursor.X <= area.Left + hoverBand)
+                        {
+                            Left = area.Left;
+                            _isHidden = false;
+                            _dock = DockEdge.None;
+                        }
                     }
-                    else if (_dock == DockEdge.Top && cursor.Y <= area.Top + hoverBand)
+                    else
                     {
-                        Top = area.Top;
-                        _isHidden = false;
-                        _dock = DockEdge.None;
+                        // ======== 横屏：上下弹出 ========
+                        if (_dock == DockEdge.Bottom && cursor.Y >= area.Bottom - hoverBand)
+                        {
+                            Top = area.Bottom - Height;
+                            _isHidden = false;
+                            _dock = DockEdge.None;
+                        }
+                        else if (_dock == DockEdge.Top && cursor.Y <= area.Top + hoverBand)
+                        {
+                            Top = area.Top;
+                            _isHidden = false;
+                            _dock = DockEdge.None;
+                        }
                     }
                 }
             }
         }
-
 
         // ==== 任务栏显示 ====
         private TaskbarForm? _taskbar;
@@ -240,6 +262,9 @@ namespace LiteMonitor
             DoubleBuffered = true;
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
             AutoScaleMode = AutoScaleMode.Dpi;
+
+            // 1. 加载历史流量数据
+            TrafficLogger.Load();
 
 
             // === 托盘图标 ===
@@ -547,8 +572,9 @@ namespace LiteMonitor
         protected override void OnFormClosed(FormClosedEventArgs e)
         {   
             // 退出时必须强制存一次最新的配置
-            _cfg.Save();
-            base.OnFormClosed(e);
+            _cfg.Save(); // 保存配置
+            TrafficLogger.Save(); // 退出时强制保存一次流量数据
+            base.OnFormClosed(e); // 调用基类方法确保正常关闭
             _ui?.Dispose();      // 释放 UI 资源
             _tray.Visible = false; // 隐藏托盘图标
         }

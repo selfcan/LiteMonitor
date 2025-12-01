@@ -4,6 +4,8 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Reflection;
 using System.Windows.Forms;
+using System.Net.Http;
+using System.Threading.Tasks;
 
 namespace LiteMonitor
 {
@@ -19,7 +21,7 @@ namespace LiteMonitor
             MinimizeBox = false;
             ShowInTaskbar = false;
             TopMost = true;                                   // ✅ 确保显示在最前
-            ClientSize = new Size(360, 240);
+            ClientSize = new Size(360, 280);
 
             var theme = ThemeManager.Current;
             BackColor = ThemeManager.ParseColor(theme.Color.GroupBackground);
@@ -100,6 +102,22 @@ namespace LiteMonitor
                 catch { }
             };
 
+            // === 检查更新按钮 ===
+            var btnCheckUpdate = new Button
+            {
+                Text = "Update?",
+                Size = new Size(100, 30),
+                Anchor = AnchorStyles.Bottom | AnchorStyles.Left,
+                Location = new Point(ClientSize.Width - 210, ClientSize.Height - 45),
+                FlatStyle = FlatStyle.Flat,
+                BackColor = ThemeManager.ParseColor(theme.Color.BarBackground),
+                ForeColor = ThemeManager.ParseColor(theme.Color.TextPrimary),
+                Font = new Font(theme.Font.Family, 9.5f, FontStyle.Regular)
+            };
+            btnCheckUpdate.FlatAppearance.BorderSize = 0;
+            btnCheckUpdate.FlatAppearance.MouseOverBackColor = ThemeManager.ParseColor(theme.Color.Background);
+            btnCheckUpdate.Click += async (_, __) => await UpdateChecker.CheckAsync(showMessage: true);
+
             // === 关闭按钮（扁平风格） ===
             var btnClose = new Button
             {
@@ -114,9 +132,9 @@ namespace LiteMonitor
                 Font = new Font(theme.Font.Family, 9.5f, FontStyle.Regular)
             };
             btnClose.FlatAppearance.BorderSize = 0;           // ✅ 移除白边框
-            btnClose.FlatAppearance.MouseOverBackColor = ThemeManager.ParseColor(theme.Color.BarLow);
+            btnClose.FlatAppearance.MouseOverBackColor = ThemeManager.ParseColor(theme.Color.Background);
 
-            Controls.AddRange(new Control[] { lblTitle, lblVer, lblDesc, websiteLink, githubLink, btnClose });
+            Controls.AddRange([lblTitle, lblVer, lblDesc, websiteLink, githubLink, btnCheckUpdate, btnClose]);
         }
     }
 }

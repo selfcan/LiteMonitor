@@ -27,7 +27,6 @@ namespace LiteMonitor.ThemeEditor
         private Panel? pageLayout;
         private Panel? pageFont;
         private Panel? pageColors;
-        private Panel? pageThreshold;
 
         // 右栏：预览
         private ThemePreviewControl? preview;
@@ -89,7 +88,6 @@ namespace LiteMonitor.ThemeEditor
             pageLayout = new Panel { AutoScroll = true, Dock = DockStyle.Fill };
             pageFont = new Panel { AutoScroll = true, Dock = DockStyle.Fill };
             pageColors = new Panel { AutoScroll = true, Dock = DockStyle.Fill };
-            pageThreshold = new Panel { AutoScroll = true, Dock = DockStyle.Fill };
             
             
             var tpColors = new TabPage(" 颜色 / Colors ");
@@ -103,10 +101,6 @@ namespace LiteMonitor.ThemeEditor
             var tpLayout = new TabPage(" 界面布局 / Layout ");
             tpLayout.Controls.Add(pageLayout);
             tab.TabPages.Add(tpLayout);
-
-            var tpThreshold = new TabPage(" 报警阈值 / Threshold ");
-            tpThreshold.Controls.Add(pageThreshold);
-            tab.TabPages.Add(tpThreshold);
 
            
 
@@ -225,7 +219,6 @@ namespace LiteMonitor.ThemeEditor
             BuildLayoutPage();
             BuildFontPage();
             BuildColorsPage();
-            BuildThresholdPage();
 
             preview.SetTheme(_theme);
         }
@@ -474,102 +467,6 @@ namespace LiteMonitor.ThemeEditor
 
             AddSaveButton(pageColors);
         }
-
-
-        // ============================================================
-        // 页面构建：Thresholds
-        // ============================================================
-        private void BuildThresholdPage()
-        {
-            pageThreshold.Controls.Clear();
-            if (_theme == null) return;
-
-            float dpiScale = GetDpiScale();
-            int y = (int)(10 * dpiScale);
-
-            void AddPair(string name, Func<double> gw, Func<double> gc, Action<double> sw, Action<double> sc)
-            {
-                pageThreshold.Controls.Add(new Label
-                {
-                    Text = name,
-                    Location = new Point((int)(10 * dpiScale), y + (int)(6 * dpiScale)),
-                    Width = (int)(200 * dpiScale) // 减少字段名宽度，整体左移
-                });
-
-                var warn = new NumericUpDown
-                {
-                    Location = new Point((int)(220 * dpiScale), y), // 整体左移，让布局更紧凑
-                    Width = (int)(80 * dpiScale),
-                    DecimalPlaces = 0,
-                    Maximum = 9999,
-                    Value = (decimal)gw()
-                };
-                warn.ValueChanged += (_, __) => { sw((double)warn.Value); preview.SetTheme(_theme!); };
-                pageThreshold.Controls.Add(warn);
-
-                var crit = new NumericUpDown
-                {
-                    Location = new Point((int)(310 * dpiScale), y), // 整体左移，让输入框之间更紧凑
-                    Width = (int)(80 * dpiScale),
-                    DecimalPlaces = 0,
-                    Maximum = 9999,
-                    Value = (decimal)gc()
-                };
-                crit.ValueChanged += (_, __) => { sc((double)crit.Value); preview.SetTheme(_theme!); };
-                pageThreshold.Controls.Add(crit);
-
-                y += (int)(40 * dpiScale);
-            }
-
-            var T = _theme.Thresholds;
-
-            // 添加报警类型说明标签
-            pageThreshold.Controls.Add(new Label
-            {
-                Text = "指标类型 / Metric Type",
-                Location = new Point((int)(10 * dpiScale), y + (int)(6 * dpiScale)),
-                Width = (int)(200 * dpiScale), // 增加宽度以完整显示字段名称
-                Font = new Font("Microsoft YaHei UI", 10, FontStyle.Bold) // 字体自动 DPI 缩放
-            });
-
-            pageThreshold.Controls.Add(new Label
-            {
-                Text = "警告 / Warn",
-                Location = new Point((int)(210 * dpiScale), y + 6), // 调整位置以完整显示标签内容
-                Width = (int)(100 * dpiScale), // 增加宽度以完整显示标签内容
-                Font = new Font("Microsoft YaHei UI", 10, FontStyle.Bold),
-                TextAlign = ContentAlignment.MiddleCenter
-            });
-
-            pageThreshold.Controls.Add(new Label
-            {
-                Text = "严重 / Crit",
-                Location = new Point((int)(300 * dpiScale), y + 6), // 调整位置与下方输入框对齐
-                Width = (int)(90 * dpiScale), // 增加宽度以完整显示标签内容
-                Font = new Font("Microsoft YaHei UI", 10, FontStyle.Bold),
-                TextAlign = ContentAlignment.MiddleCenter
-            });
-
-            y += (int)(35 * dpiScale); // 增加垂直间距，应用DPI缩放
-
-            AddPair("负载阈值 / Load (%)", () => T.Load.Warn, () => T.Load.Crit,
-                v => T.Load.Warn = v, v => T.Load.Crit = v);
-
-            AddPair("温度阈值 / Temp (°C)", () => T.Temp.Warn, () => T.Temp.Crit,
-                v => T.Temp.Warn = v, v => T.Temp.Crit = v);
-
-            AddPair("内存阈值 / Mem (%)", () => T.Mem.Warn, () => T.Mem.Crit,
-                v => T.Mem.Warn = v, v => T.Mem.Crit = v);
-
-            AddPair("显存阈值 / Vram (%)", () => T.Vram.Warn, () => T.Vram.Crit,
-                v => T.Vram.Warn = v, v => T.Vram.Crit = v);
-
-            AddPair("网络阈值 / Net (KB/s)", () => T.NetKBps.Warn, () => T.NetKBps.Crit,
-                v => T.NetKBps.Warn = v, v => T.NetKBps.Crit = v);
-
-            AddSaveButton(pageThreshold);
-        }
-
 
         // ============================================================
         // 通用保存按钮

@@ -5,7 +5,8 @@
     "GPU": "🎮GPU",
     "MEM": "💾Memory",
     "DISK": "📀Disk",
-    "NET": "🌐Network"
+    "NET": "🌐Network",
+    "DATA": "📈Traffic Stats"
   },
   "Items": {
     "CPU.Load": "CPU Load",
@@ -21,7 +22,9 @@
     "DISK.Read": "Read",
     "DISK.Write": "Write",
     "NET.Up": "Upload",
-    "NET.Down": "Download"
+    "NET.Down": "Download",
+    "DATA.DayUp": "Today Up",
+    "DATA.DayDown": "Today Down"
   },
   "Short": {
     "CPU.Load": "CPU",
@@ -37,7 +40,9 @@
     "DISK.Read": "R",
     "DISK.Write": "W",
     "NET.Up": "⏫",
-    "NET.Down": "⏬"
+    "NET.Down": "⏬",
+    "DATA.DayUp": "⏫",
+    "DATA.DayDown": "⏬"
   },
   "Menu": {
     "TopMost": "Always on Top",
@@ -50,10 +55,12 @@
     "Opacity": "Opacity",
     "ShowItems": "Show Items",
     "Theme": "Theme",
+    "SpeedTest": "Speed Test",
+    "Traffic": "Traffic History",
     "More": "More",
     "ThemeEditor": "Theme Editor",
-    "SpeedTest": "Speed Test",
-    "Menu.AlertTemp": "High Temp Alert",
+    "thresholds": "Alert Thresholds",
+    "AlertTemp": "High Temp Alert",
     "ClickThrough": "Click Through",
     "AutoHide": "Auto Hide at Edge",
     "ClampToScreen": "Clamp to Screen",
@@ -65,7 +72,6 @@
     "Auto": "Auto Mode",
     "Language": "Language",
     "AutoStart": "Auto Start",
-    "CheckUpdate": "Check for Updates",
     "About": "About LiteMonitor",
     "Exit": "Exit"
   }

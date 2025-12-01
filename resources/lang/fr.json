@@ -1,11 +1,12 @@
 {
   "Title": "⚡️LiteMonitor",
   "Groups": {
-    "CPU": "💻Processeur",
-    "GPU": "🎮Carte graphique",
+    "CPU": "💻CPU",
+    "GPU": "🎮GPU",
     "MEM": "💾Mémoire",
     "DISK": "📀Disque",
-    "NET": "🌐Réseau"
+    "NET": "🌐Réseau",
+    "DATA": "📈Stats trafic"
   },
   "Items": {
     "CPU.Load": "Charge CPU",
@@ -14,14 +15,16 @@
     "CPU.Power": "Puiss. CPU",
     "GPU.Load": "Charge GPU",
     "GPU.Temp": "Temp. GPU",
-    "GPU.VRAM": "Utilisation VRAM",
+    "GPU.VRAM": "Util. VRAM",
     "GPU.Clock": "Fréq. GPU",
     "GPU.Power": "Puiss. GPU",
-    "MEM.Load": "Utilisation mémoire",
+    "MEM.Load": "Util. mémoire",
     "DISK.Read": "Lecture",
     "DISK.Write": "Écriture",
     "NET.Up": "Envoi",
-    "NET.Down": "Réception"
+    "NET.Down": "Réception",
+    "DATA.DayUp": "Env. auj.",
+    "DATA.DayDown": "Récp. auj."
   },
   "Short": {
     "CPU.Load": "CPU",
@@ -37,11 +40,13 @@
     "DISK.Read": "Lect.",
     "DISK.Write": "Écr.",
     "NET.Up": "⏫",
-    "NET.Down": "⏬"
+    "NET.Down": "⏬",
+    "DATA.DayUp": "⏫",
+    "DATA.DayDown": "⏬"
   },
   "Menu": {
     "TopMost": "Toujours au-dessus",
-    "DisplayMode": "Mode d’affichage",
+    "DisplayMode": "Mode d'affichage",
     "Vertical": "Panneau vertical",
     "Horizontal": "Barre horizontale",
     "TaskbarShow": "Afficher sur la barre",
@@ -50,21 +55,23 @@
     "Opacity": "Opacité",
     "ShowItems": "Éléments à afficher",
     "Theme": "Thème",
+    "SpeedTest": "Test de vitesse",
+    "Traffic": "Historique trafic",
     "More": "Plus",
     "ThemeEditor": "Editeur de thèmes",
-    "SpeedTest": "Test de vitesse",
+    "thresholds": "Seuils d'alerte",
+    "AlertTemp": "Alerte température",
     "ClickThrough": "Clic traversant",
     "AutoHide": "Masquer au bord",
-    "ClampToScreen": "Garder à l’écran",
-    "Refresh": "Fréquence de mise à jour",
-    "Width": "Largeur du panneau",
+    "ClampToScreen": "Garder à l'écran",
+    "Refresh": "Fréquence mise à jour",
+    "Width": "Largeur panneau",
     "Scale": "Échelle UI",
     "NetworkSource": "Source réseau",
     "DiskSource": "Source disque",
     "Auto": "Automatique",
     "Language": "Langue",
     "AutoStart": "Démarrage auto",
-    "CheckUpdate": "Vérifier updates",
     "About": "À propos de LiteMonitor",
     "Exit": "Quitter"
   }

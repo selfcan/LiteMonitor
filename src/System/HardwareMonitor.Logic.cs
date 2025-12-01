@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.IO;
 using LibreHardwareMonitor.Hardware;
+using LiteMonitor.src.Core;
 
 namespace LiteMonitor.src.System
 {
@@ -21,6 +22,16 @@ namespace LiteMonitor.src.System
             {
                 case "NET.Up": case "NET.Down": return GetNetworkValue(key);
                 case "DISK.Read": case "DISK.Write": return GetDiskValue(key);
+            }
+
+            // ★★★ [新增] 获取今日流量 (从 TrafficLogger 拿) ★★★
+            if (key == "DATA.DayUp")
+            {
+                return TrafficLogger.GetTodayStats().up;
+            }
+            if (key == "DATA.DayDown")
+            {
+                return TrafficLogger.GetTodayStats().down;
             }
 
             // 2. 频率与功耗 (复合计算逻辑)
@@ -76,6 +87,8 @@ namespace LiteMonitor.src.System
                 double weightedSum = 0;
                 double totalLoad = 0;
                 float maxRawClock = 0;
+                float validCoreCount = 0; // 新增：记录读到频率的核心数
+                double sumRawClock = 0;   // 新增：记录频率总和（用于算简单平均）
 
                 // 遍历缓存，零 GC，极速
                 foreach (var core in _cpuCoreCache)
@@ -84,6 +97,10 @@ namespace LiteMonitor.src.System
 
                     float clk = core.Clock.Value.Value;
                     if (clk > maxRawClock) maxRawClock = clk;
+
+                    // 累加基础数据
+                    sumRawClock += clk;
+                    validCoreCount++;
 
                     // 加权逻辑
                     if (core.Load != null && core.Load.Value.HasValue)
@@ -97,8 +114,12 @@ namespace LiteMonitor.src.System
                 // 记录物理最高频 (用于颜色自适应)
                 if (maxRawClock > 0) _cfg.UpdateMaxRecord(key, maxRawClock);
 
-                // 待机处理：若无负载，返回 0 或最小频率
-                if (totalLoad <= 0.001) return 0;
+                // 现逻辑：如果算不出加权平均（因为没负载），就返回简单平均值；如果简单平均也没有，返回最高频
+                if (totalLoad <= 0.001) 
+                {
+                    if (validCoreCount > 0) return (float)(sumRawClock / validCoreCount);
+                    return maxRawClock > 0 ? maxRawClock : 0;
+                }
 
                 return (float)(weightedSum / totalLoad);
             }
@@ -401,10 +422,35 @@ namespace LiteMonitor.src.System
             if (type == HardwareType.Cpu)
             {
                 if (s.SensorType == SensorType.Load && Has(name, "total")) return "CPU.Load";
+                // [深度优化后的温度匹配逻辑]
                 if (s.SensorType == SensorType.Temperature)
                 {
-                    if (Has(name, "package") || Has(name, "average") || Has(name, "cores")) return "CPU.Temp";
-                    if (Has(name, "tctl") || Has(name, "tdie") || Has(name, "ccd")) return "CPU.Temp"; // <--- 增加了这里
+                    // 1. 黄金标准：包含这些词的通常就是我们要的
+                    if (Has(name, "package") ||  // Intel/AMD 标准
+                        Has(name, "average") ||  // LHM 聚合数据
+                        Has(name, "tctl") ||     // AMD 风扇控制温度 (最准)
+                        Has(name, "tdie") ||     // AMD 核心硅片温度
+                        Has(name, "ccd") ||       // AMD 核心板
+                        Has(name, "cores"))     // 通用核心温度
+                    {
+                        return "CPU.Temp";
+                    }
+
+                    // 2. 银牌标准：通用名称兜底 (修复 AMD 7840HS 等移动端 CPU)
+                    // 必须严格排除干扰项 (如 SOC, VRM, Pump 等)
+                    if ((Has(name, "cpu") || Has(name, "core")) && 
+                        !Has(name, "soc") &&     // 排除核显/片上系统
+                        !Has(name, "vrm") &&     // 排除供电
+                        !Has(name, "fan") &&     // 排除风扇(虽类型不同，但防名字干扰)
+                        !Has(name, "pump") &&    // 排除水泵
+                        !Has(name, "liquid") &&  // 排除水冷液
+                        !Has(name, "coolant") && // 排除冷却液
+                        !Has(name, "distance"))  // 排除 "Distance to TjMax"
+                    {
+                        // 注意：这里可能会匹配到 "Core #1"，虽然不是 Package，
+                        // 但在没有 Package 传感器的情况下，这是唯一的有效读数。
+                        return "CPU.Temp";
+                    }
                 }
                 if (s.SensorType == SensorType.Power && (Has(name, "package") || Has(name, "cores"))) return "CPU.Power";
                 // 注意：Clock 不走 Map，走加权平均缓存，所以这里不需要映射

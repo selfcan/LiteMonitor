@@ -55,20 +55,21 @@ namespace LiteMonitor
                 // --- 策略判断：是双列模式还是普通模式？ ---
                 bool isTwoColumnGroup = 
                     g.GroupName.Equals("NET", StringComparison.OrdinalIgnoreCase) || 
-                    g.GroupName.Equals("DISK", StringComparison.OrdinalIgnoreCase);
+                    g.GroupName.Equals("DISK", StringComparison.OrdinalIgnoreCase) || 
+                    g.GroupName.Equals("DATA", StringComparison.OrdinalIgnoreCase);
 
-                int contentHeight = 0;
-
+                int contentHeight;
                 if (isTwoColumnGroup)
                 {
                     // === 双列布局计算 (NET / DISK) ===
-                    
+
                     // 1. 调整高度：原本 rowH * 1.1 太挤了，建议改为 1.4~1.5 倍，容纳上下两行文字
                     // 如果觉得太高，可以改回 0.10，但建议至少留足空间
-                    int twoLineH = (int)(rowH * 1.1); 
+                    //int twoLineH = (int)(rowH * 1.1); 
+                    int twoLineH = rowH;
                     contentHeight = twoLineH + _t.Layout.ItemGap;
 
-                    int itemY = y + _t.Layout.GroupPadding;
+                    int itemY = y + _t.Layout.GroupPadding + (_t.Layout.ItemGap / 2);
                     int colWidth = w / 2; // 两列平分宽度
 
                     // 确保最多只处理2个项目

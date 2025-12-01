@@ -230,32 +230,12 @@ namespace LiteMonitor
             AddToggle("Groups.NET",
                 () => cfg.Enabled.NetUp || cfg.Enabled.NetDown,
                 v => { cfg.Enabled.NetUp = v; cfg.Enabled.NetDown = v; });
+            AddToggle("Groups.DATA",
+                () => cfg.Enabled.TrafficDay,
+                v => cfg.Enabled.TrafficDay = v);
 
 
-            // === 透明度 ===
-            var opacityRoot = new ToolStripMenuItem(LanguageManager.T("Menu.Opacity"));
-            double[] presetOps = { 1.0, 0.95, 0.9, 0.85, 0.8, 0.75, 0.7, 0.6, 0.5, 0.4, 0.3 };
-            foreach (var val in presetOps)
-            {
-                var item = new ToolStripMenuItem($"{val * 100:0}%")
-                {
-                    Checked = Math.Abs(cfg.Opacity - val) < 0.01
-                };
-
-                item.Click += (_, __) =>
-                {
-                    cfg.Opacity = val;
-                    cfg.Save();
-                    form.Opacity = Math.Clamp(val, 0.1, 1.0);
-
-                    foreach (ToolStripMenuItem other in opacityRoot.DropDownItems)
-                        other.Checked = false;
-
-                    item.Checked = true;
-                };
-                opacityRoot.DropDownItems.Add(item);
-            }
-            menu.Items.Add(opacityRoot);
+            
 
 
           
@@ -288,8 +268,31 @@ namespace LiteMonitor
             menu.Items.Add(themeRoot);
             menu.Items.Add(new ToolStripSeparator());
 
+            // 网络测速
+            var speedWindow = new ToolStripMenuItem(LanguageManager.T("Menu.Speedtest"));
+            speedWindow.Image = Properties.Resources.NetworkIcon;// 添加网络测速图标
+            speedWindow.Click += (_, __) =>
+            {
+                var f = new SpeedTestForm();
+                f.StartPosition = FormStartPosition.Manual;
+                f.Location = new Point(form.Left + 20, form.Top + 20);
+                f.Show();
+            };
+            menu.Items.Add(speedWindow);
 
-            // === 更多 ===
+
+            // 历史流量统计
+            var trafficItem = new ToolStripMenuItem(LanguageManager.T("Menu.Traffic")); // 建议: LanguageManager.T("Menu.Traffic")
+            trafficItem.Image = Properties.Resources.TrafficIcon;// 添加流量统计图标
+            trafficItem.Click += (_, __) =>
+            {
+                // 创建并显示窗口
+                var form = new TrafficHistoryForm(cfg);
+                form.Show();
+            };
+            menu.Items.Add(trafficItem);
+
+            // === 更多功能 ===
             var moreRoot = new ToolStripMenuItem(LanguageManager.T("Menu.More"));
             moreRoot.Image = Properties.Resources.MoreIcon;// 添加更多图标
             menu.Items.Add(moreRoot);
@@ -301,20 +304,28 @@ namespace LiteMonitor
             moreRoot.DropDownItems.Add(themeEditor);
             moreRoot.DropDownItems.Add(new ToolStripSeparator());
 
-
-            // 网络测速
-            var speedWindow = new ToolStripMenuItem(LanguageManager.T("Menu.Speedtest"));
-            speedWindow.Image = Properties.Resources.NetworkIcon;// 添加网络测速图标
-            speedWindow.Click += (_, __) =>
+            // 阈值设置
+            var thresholdItem = new ToolStripMenuItem(LanguageManager.T("Menu.Thresholds")); 
+            // 添加阈值设置图标
+            thresholdItem.Image = Properties.Resources.Threshold;// 添加阈值设置图标
+            thresholdItem.Click += (_, __) =>
             {
-                var f = new SpeedTestForm();
-                f.StartPosition = FormStartPosition.Manual;
-                f.Location = new Point(form.Left + 20, form.Top + 20);
-                f.Show();
+                var f = new ThresholdForm(cfg);
+                
+                // ★★★ 核心修复：监听窗口关闭结果 ★★★
+                if (f.ShowDialog() == DialogResult.OK)
+                {
+                    // 如果用户点了保存，强制主窗口重建菜单
+                    // 这样菜单上的 "高温报警 (>XX°C)" 才会变成新的数值
+                    form.RebuildMenus();
+                    
+                    // 顺便刷新一下界面布局（虽然阈值不影响布局，但为了稳妥）
+                    ui?.RebuildLayout();
+                }
             };
-            moreRoot.DropDownItems.Add(speedWindow);
+            moreRoot.DropDownItems.Add(thresholdItem);
             moreRoot.DropDownItems.Add(new ToolStripSeparator());
-            
+
             
             // === 高温报警 ===
             var alertItem = new ToolStripMenuItem(LanguageManager.T("Menu.AlertTemp") + " (>" + cfg.AlertTempThreshold + "°C)")
@@ -330,8 +341,6 @@ namespace LiteMonitor
             };
 
             moreRoot.DropDownItems.Add(alertItem);
-            // 加个分隔线美观一点
-            moreRoot.DropDownItems.Add(new ToolStripSeparator());
 
 
             // 自动隐藏
@@ -409,6 +418,30 @@ namespace LiteMonitor
             moreRoot.DropDownItems.Add(refreshRoot);
             moreRoot.DropDownItems.Add(new ToolStripSeparator());
 
+            // === 透明度 ===
+            var opacityRoot = new ToolStripMenuItem(LanguageManager.T("Menu.Opacity"));
+            double[] presetOps = { 1.0, 0.95, 0.9, 0.85, 0.8, 0.75, 0.7, 0.6, 0.5, 0.4, 0.3 };
+            foreach (var val in presetOps)
+            {
+                var item = new ToolStripMenuItem($"{val * 100:0}%")
+                {
+                    Checked = Math.Abs(cfg.Opacity - val) < 0.01
+                };
+
+                item.Click += (_, __) =>
+                {
+                    cfg.Opacity = val;
+                    cfg.Save();
+                    form.Opacity = Math.Clamp(val, 0.1, 1.0);
+
+                    foreach (ToolStripMenuItem other in opacityRoot.DropDownItems)
+                        other.Checked = false;
+
+                    item.Checked = true;
+                };
+                opacityRoot.DropDownItems.Add(item);
+            }
+            moreRoot.DropDownItems.Add(opacityRoot);
 
             // 界面宽度
             var widthRoot = new ToolStripMenuItem(LanguageManager.T("Menu.Width"));
@@ -587,7 +620,7 @@ namespace LiteMonitor
 
             menu.Items.Add(new ToolStripSeparator());
 
-
+            
 
 
 
@@ -625,7 +658,7 @@ namespace LiteMonitor
             menu.Items.Add(new ToolStripSeparator());
 
 
-            // === 自启动 ===
+            // === 开机启动 ===
             var autoStart = new ToolStripMenuItem(LanguageManager.T("Menu.AutoStart"))
             {
                 Checked = cfg.AutoStart,
@@ -638,13 +671,8 @@ namespace LiteMonitor
                 AutoStart.Set(cfg.AutoStart);
             };
             menu.Items.Add(autoStart);
-            menu.Items.Add(new ToolStripSeparator());
 
 
-            // === 检查更新 ===
-            var checkUpdate = new ToolStripMenuItem(LanguageManager.T("Menu.CheckUpdate"));
-            checkUpdate.Click += async (_, __) => await UpdateChecker.CheckAsync(showMessage: true);
-            menu.Items.Add(checkUpdate);
 
             // === 关于 ===
             var about = new ToolStripMenuItem(LanguageManager.T("Menu.About"));
