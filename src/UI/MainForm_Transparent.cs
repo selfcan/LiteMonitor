@@ -32,6 +32,10 @@ namespace LiteMonitor
         private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
         [DllImport("user32.dll", SetLastError = true)]
         private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SetForegroundWindow(IntPtr hWnd);
         private const int GWL_EXSTYLE = -20;
         private const int WS_EX_TRANSPARENT = 0x20;
         private const int WS_EX_LAYERED = 0x80000;
@@ -284,8 +288,28 @@ namespace LiteMonitor
             // 现在主题已可用，再设置背景色与菜单
             BackColor = ThemeManager.ParseColor(ThemeManager.Current.Color.Background);
 
-            _tray.ContextMenuStrip = MenuManager.Build(this, _cfg, _ui);
-            ContextMenuStrip = _tray.ContextMenuStrip;
+           // 1. 只把菜单生成出来，赋值给窗体备用（但不赋值给 _tray.ContextMenuStrip）
+            ContextMenuStrip = MenuManager.Build(this, _cfg, _ui);
+
+            // 2. 手动监听托盘的鼠标抬起事件
+            _tray.MouseUp += (_, e) =>
+            {
+                // 仅响应右键
+                if (e.Button == MouseButtons.Right)
+                {
+                    // ★关键步骤A：必须先激活一下主窗口（即使它是隐藏的），
+                    // 否则菜单弹出后，点击屏幕其他地方菜单不会自动消失
+                    
+                    // 注意：这里使用 Win32 API 激活可能比 this.Activate() 更稳，
+                    // 但对于隐藏窗口，只需确保 MessageLoop 能收到消息即可。
+                    // 简单处理：
+                    SetForegroundWindow(Handle); // 下面会补充这个 API 定义
+                    
+                    // ★关键步骤B：在当前鼠标光标位置强制弹出
+                    // 这样就完全绕过了 WinForms 对多屏 DPI 的错误计算
+                    ContextMenuStrip?.Show(Cursor.Position);
+                }
+            };
             
             // 托盘图标双击 → 显示主窗口
             _tray.MouseDoubleClick += (_, e) =>
@@ -402,7 +426,7 @@ namespace LiteMonitor
         public void RebuildMenus()
         {
             var menu = MenuManager.Build(this, _cfg, _ui);
-            _tray.ContextMenuStrip = menu;
+            //_tray.ContextMenuStrip = menu;
             ContextMenuStrip = menu;
         }
 

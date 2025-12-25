@@ -66,6 +66,7 @@ namespace LiteMonitor
         [JsonIgnore] public static float DetectedRamTotalGB { get; set; } = 0;
         [JsonIgnore] public static float DetectedGpuVramTotalGB { get; set; } = 0;
 
+        public bool UseSystemCpuLoad { get; set; } = false; // 默认为 false，用户开启后使用系统计数器
         // ====== 记录与报警 ======
         public float RecordedMaxCpuPower { get; set; } = 65.0f;
         public float RecordedMaxCpuClock { get; set; } = 4200.0f;

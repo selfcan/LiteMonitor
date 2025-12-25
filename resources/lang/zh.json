@@ -87,6 +87,7 @@
         "MemoryDisplayModeTip": "⚠️说明：内存显存显示模式修改后在所有地方生效",
         "Percent": "百分比",
         "UsedSize": "已用容量",
+        "UseSystemCpuLoad": "使用系统CPU负载算法",
         "TaskbarSettings": "任务栏设置",
         "TaskbarStyle": "任务栏样式", 
         "TaskbarStyleBold": "大字模式", 

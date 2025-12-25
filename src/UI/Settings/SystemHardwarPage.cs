@@ -128,6 +128,8 @@ namespace LiteMonitor.src.UI.SettingsPage
                 v => Config.PreferredNetwork = (v == strAuto) ? "" : v
             );
 
+            AddBool(group, "Menu.UseSystemCpuLoad", () => Config.UseSystemCpuLoad, v => Config.UseSystemCpuLoad = v);
+
             // 3. 刷新率
             int[] rates = { 100, 200, 300, 500, 600, 700, 800, 1000, 1500, 2000, 3000 };
             AddCombo(group, "Menu.Refresh", rates.Select(r => r + " ms"),

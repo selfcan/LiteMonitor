@@ -1,7 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
+﻿using System.Diagnostics; // 必须添加这个
 using LibreHardwareMonitor.Hardware;
 using System.Net.NetworkInformation;
 using LiteMonitor.src.Core; // 必须引用
@@ -35,6 +32,10 @@ namespace LiteMonitor.src.SystemServices
        // --- 流量统计专用字段 ---
         private DateTime _lastTrafficTime = DateTime.Now; // 积分时间戳
         private DateTime _lastTrafficSave = DateTime.Now; // 自动保存时间戳
+
+        // ★★★ [新增] 系统 CPU 计数器 ★★★
+        private PerformanceCounter? _cpuPerfCounter;
+        private float _lastSystemCpuLoad = 0f;
 
         // ★★★ [修复] 状态隔离：每个硬件拥有独立的网络状态，不再全局共享 ★★★
         private class NetworkState
@@ -106,7 +107,11 @@ namespace LiteMonitor.src.SystemServices
             });
         }
 
-        public void Dispose() => _computer.Close();
+        public void Dispose() 
+        {
+            _computer.Close();
+            _cpuPerfCounter?.Dispose(); // ★ 新增
+        }
 
         // =======================================================================
         // [生命周期] 定时更新 (终极优化版)
@@ -192,6 +197,39 @@ namespace LiteMonitor.src.SystemServices
                 }
                 
                 if (isSlowScanTick) _lastSlowScan = DateTime.Now;
+
+                // ★★★ [新增] 更新系统 CPU 计数器 ★★★
+                if (_cfg.UseSystemCpuLoad)
+                {
+                    if (_cpuPerfCounter == null)
+                    {
+                        try 
+                        {
+                            // 初始化计数器："Processor" 是类别，"% Processor Time" 是计数器名，"_Total" 是实例名
+                            _cpuPerfCounter = new PerformanceCounter("Processor", "% Processor Time", "_Total");
+                            _cpuPerfCounter.NextValue(); // 第一次调用通常返回 0，用于建立基准
+                        }
+                        catch (Exception ex)
+                        {
+                            Debug.WriteLine("Init CPU Counter failed: " + ex.Message);
+                        }
+                    }
+
+                    if (_cpuPerfCounter != null)
+                    {
+                        // NextValue 获取的是“上一次调用到现在的平均值”，非常适合 1秒1次的 UpdateAll
+                        _lastSystemCpuLoad = _cpuPerfCounter.NextValue();
+                    }
+                }
+                else
+                {
+                    // 如果用户关闭了该功能，释放计数器以节省资源
+                    if (_cpuPerfCounter != null)
+                    {
+                        _cpuPerfCounter.Dispose();
+                        _cpuPerfCounter = null;
+                    }
+                }
 
                 // 流量自动保存
                 if ((DateTime.Now - _lastTrafficSave).TotalSeconds > 60)

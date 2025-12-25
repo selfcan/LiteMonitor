@@ -16,6 +16,11 @@ namespace LiteMonitor.src.SystemServices
         public float? Get(string key)
         {
             EnsureMapFresh();
+            // ★★★ [新增] 拦截 CPU.Load 请求 ★★★
+            if (key == "CPU.Load" && _cfg.UseSystemCpuLoad)
+            {
+                return _lastSystemCpuLoad;
+            }
 
             // 1. 网络与磁盘 (独立逻辑)
             switch (key)
