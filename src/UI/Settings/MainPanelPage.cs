@@ -66,6 +66,18 @@ namespace LiteMonitor.src.UI.SettingsPage
             AddBool(group, "Menu.AutoHide", () => Config.AutoHide, v => Config.AutoHide = v);
             AddBool(group, "Menu.ClickThrough", () => Config.ClickThrough, v => Config.ClickThrough = v);
 
+            // ★★★ 新增：双击动作设置 ★★★
+            string[] actions = { 
+                LanguageManager.T("Menu.ActionSwitchLayout"), // 0: 切换横竖屏
+                LanguageManager.T("Menu.ActionTaskMgr"),      // 1: 任务管理器
+                LanguageManager.T("Menu.ActionSettings"),           // 2: 设置
+                LanguageManager.T("Menu.ActionTrafficHistory")      // 3: 历史流量
+            };
+            AddComboIndex(group, "Menu.DoubleClickAction", actions,
+                () => Config.MainFormDoubleClickAction,
+                idx => Config.MainFormDoubleClickAction = idx
+            );
+
             AddGroupToPage(group);
         }
 
@@ -115,7 +127,7 @@ namespace LiteMonitor.src.UI.SettingsPage
                 scales.Select(s => (s * 100) + "%"),
                 () => (Config.UIScale * 100) + "%",
                 s => Config.UIScale = UIUtils.ParseDouble(s) / 100.0);
-                
+
             group.AddFullItem(new LiteNote(LanguageManager.T("Menu.MemoryDisplayModeTip"), 0));
 
             AddGroupToPage(group);

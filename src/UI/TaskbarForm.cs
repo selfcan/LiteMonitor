@@ -166,11 +166,25 @@ namespace LiteMonitor
             // 只响应左键双击
             if (e.Button == MouseButtons.Left)
             {
-                // ★ 改为：显示 / 隐藏 主窗口自动切换
-                if (_mainForm.Visible)
-                    _mainForm.HideMainWindow();
-                else
-                    _mainForm.ShowMainWindow();
+                switch (_cfg.TaskbarDoubleClickAction)
+                {
+                    case 1: // 任务管理器
+                        _mainForm.OpenTaskManager();
+                        break;
+                    case 2: // 设置
+                        _mainForm.OpenSettings();
+                        break;
+                    case 3: // 历史流量
+                        _mainForm.OpenTrafficHistory();
+                        break;
+                    case 0: // 默认：显隐切换
+                    default:
+                        if (_mainForm.Visible)
+                            _mainForm.HideMainWindow();
+                        else
+                            _mainForm.ShowMainWindow();
+                        break;
+                }
             }
         }
 

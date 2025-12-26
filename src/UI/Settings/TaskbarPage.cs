@@ -61,6 +61,18 @@ namespace LiteMonitor.src.UI.SettingsPage
                 }
             );
 
+            // ★★★ 新增：双击动作设置 ★★★
+            string[] actions = { 
+                LanguageManager.T("Menu.ActionToggleVisible"),    // 0: 显示/隐藏主界面
+                LanguageManager.T("Menu.ActionTaskMgr"),      // 1: 任务管理器
+                LanguageManager.T("Menu.ActionSettings"),           // 2: 设置
+                LanguageManager.T("Menu.ActionTrafficHistory")      // 3: 历史流量
+            };
+            AddComboIndex(group, "Menu.DoubleClickAction", actions,
+                () => Config.TaskbarDoubleClickAction,
+                idx => Config.TaskbarDoubleClickAction = idx
+            );
+
             // 4. 对齐
             AddComboIndex(group, "Menu.TaskbarAlign",
                 new[] { LanguageManager.T("Menu.TaskbarAlignRight"), LanguageManager.T("Menu.TaskbarAlignLeft") },

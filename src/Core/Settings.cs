@@ -57,6 +57,14 @@ namespace LiteMonitor
         public string TaskbarColorCrit { get; set; } = "#C03030";  // 严重 (橙红)
         public string TaskbarColorBg { get; set; } = "#D2D2D2";    // 防杂边背景色 (透明键)
 
+        // ★★★ 新增：双击动作配置 ★★★
+        // 0 = 默认 (主界面:切换横竖屏 / 任务栏:显隐主界面)
+        // 1 = 任务管理器
+        // 2 = 设置中心
+        // 3 = 历史流量
+        public int MainFormDoubleClickAction { get; set; } = 0;
+        public int TaskbarDoubleClickAction { get; set; } = 0;
+
         // ★★★ 新增：内存/显存显示模式 ★★★
         // 0 = 百分比 (默认)
         // 1 = 已用容量

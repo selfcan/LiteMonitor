@@ -65,6 +65,14 @@
     "ClampToScreen": "靠边自动吸附",
     "AutoHide": "靠边自动隐藏",
     "ClickThrough": "鼠标穿透",
+    "DoubleClickAction": "双击动作触发",
+    "ActionSwitchLayout": "切换横竖屏模式",
+    "ActionToggleVisible": "显示/隐藏主界面",
+    "ActionTaskMgr": "打开任务管理器",
+    "ActionSettings": "打开设置面板",
+    "ActionTrafficHistory": "打开历史流量统计",
+
+
 
     "Appearance": "外观设置",
     "Theme": "主题",

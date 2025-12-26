@@ -1,6 +1,9 @@
 using LiteMonitor.src.Core;
 using LiteMonitor.src.SystemServices;
 using System.Runtime.InteropServices;
+using System.Diagnostics; // ★ 必须添加引用
+using LiteMonitor.src.UI;
+
 namespace LiteMonitor
 {
     public class MainForm : Form
@@ -350,13 +353,25 @@ namespace LiteMonitor
                     SavePos();
                 }
             };
-            // === 双击切换横竖屏 ===
+           // === 双击事件重构 ===
             this.DoubleClick += (_, __) =>
             {
-                _cfg.HorizontalMode = !_cfg.HorizontalMode;  // 1) 切换横竖屏状态
-                _cfg.Save();                                  // 2) 保存配置
-                _ui.ApplyTheme(_cfg.Skin);                    // 3) 重建布局 + 重绘
-                RebuildMenus();                               // 4) 更新菜单勾选状态
+                switch (_cfg.MainFormDoubleClickAction)
+                {
+                    case 1: // 任务管理器
+                        OpenTaskManager();
+                        break;
+                    case 2: // 设置
+                        OpenSettings();
+                        break;
+                    case 3: // 历史流量
+                        OpenTrafficHistory();
+                        break;
+                    case 0: // 默认：切换横竖屏
+                    default:
+                        ToggleLayoutMode();
+                        break;
+                }
             };
 
 
@@ -387,6 +402,43 @@ namespace LiteMonitor
 
 
         }
+        // ★★★ 新增：通用动作方法 (供 TaskbarForm 和 本地调用) ★★★
+        public void OpenTaskManager()
+        {
+            try 
+            { 
+                Process.Start(new ProcessStartInfo("taskmgr") { UseShellExecute = true }); 
+            } 
+            catch { }
+        }
+
+        public void OpenSettings()
+        {
+            // 防止重复打开
+            foreach (Form f in Application.OpenForms)
+            {
+                if (f is SettingsForm) { f.Activate(); return; }
+            }
+            new SettingsForm(_cfg, _ui, this).Show();
+        }
+
+        public void OpenTrafficHistory()
+        {
+            foreach (Form f in Application.OpenForms)
+            {
+                if (f is TrafficHistoryForm) { f.Activate(); return; }
+            }
+            new TrafficHistoryForm(_cfg).Show();
+        }
+
+        private void ToggleLayoutMode()
+        {
+            _cfg.HorizontalMode = !_cfg.HorizontalMode;
+            _cfg.Save();
+            _ui.ApplyTheme(_cfg.Skin);
+            RebuildMenus();
+        }
+
         public void ShowMainWindow()
         {
             this.Show();
