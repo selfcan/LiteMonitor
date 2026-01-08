@@ -33,7 +33,20 @@ namespace LiteMonitor
         /// </summary>
         public int Build(List<GroupLayoutInfo> groups)
         {
-            int x = _t.Layout.Padding;
+            // ★★★ [优化] 获取缩放系数，修正硬编码像素在 高DPI 下过小的问题 ★★★
+            float s = _t.Layout.LayoutScale; 
+            if (s <= 0) s = 1.0f;
+
+            // 将写死的像素值进行缩放
+            int innerPad = (int)(10 * s);      // 原本是 10
+            int innerPadTotal = innerPad * 2;  // 原本是 20
+            int barMinH = (int)(6 * s);        // 原本是 6
+            int barBotGap = (int)(3 * s);      // 原本是 3
+
+            // ★★★ [视觉补偿] x 减去 1px ★★★
+            // 修复“左边距比右边宽”的视觉问题（平衡 GDI+ 文本左侧留白）
+            int x = _t.Layout.Padding - 1; 
+
             int y = _t.Layout.Padding;
             int w = _t.Layout.Width - _t.Layout.Padding * 2;
             int rowH = _t.Layout.RowHeight;
@@ -59,9 +72,7 @@ namespace LiteMonitor
                 {
                     // === 双列布局计算 (NET / DISK) ===
 
-                    // 1. 调整高度：原本 rowH * 1.1 太挤了，建议改为 1.4~1.5 倍，容纳上下两行文字
-                    // 如果觉得太高，可以改回 0.10，但建议至少留足空间
-                    //int twoLineH = (int)(rowH * 1.1); 
+                    // 1. 调整高度：容纳上下两行文字
                     int twoLineH = rowH;
                     contentHeight = twoLineH + _t.Layout.ItemGap;
 
@@ -87,11 +98,9 @@ namespace LiteMonitor
                         int halfH = twoLineH / 2;
 
                         // LabelRect 占上半部分
-                        // 渲染器会自动垂直居中或顶部对齐，这里给足空间即可
                         it.LabelRect = new Rectangle(itemX, itemY, colWidth, halfH);
 
                         // ValueRect 占下半部分
-                        // 从 itemY + halfH 开始
                         it.ValueRect = new Rectangle(itemX, itemY + halfH, colWidth, twoLineH - halfH);
                     }
                 }
@@ -106,8 +115,8 @@ namespace LiteMonitor
                         it.Style = MetricRenderStyle.StandardBar;
                         it.Bounds = new Rectangle(x, itemY, w, rowH);
 
-                        // 内部：左右 padding 10px
-                        var inner = new Rectangle(x + 10, itemY, w - 20, rowH);
+                        // 内部：左右 padding 使用缩放后的 innerPad
+                        var inner = new Rectangle(x + innerPad, itemY, w - innerPadTotal, rowH);
                         
                         // 文本区域占上部 55%
                         int topH = (int)(inner.Height * 0.55);
@@ -116,9 +125,9 @@ namespace LiteMonitor
                         it.LabelRect = topRect;
                         it.ValueRect = topRect;
 
-                        // 进度条占底部，最小 6px
-                        int barH = Math.Max(6, (int)(inner.Height * 0.25));
-                        int barY = inner.Bottom - barH - 3;
+                        // 进度条占底部，最小高度使用缩放后的 barMinH
+                        int barH = Math.Max(barMinH, (int)(inner.Height * 0.25));
+                        int barY = inner.Bottom - barH - barBotGap; // 底部间距也缩放
                         it.BarRect = new Rectangle(inner.X, barY, inner.Width, barH);
 
                         itemY += rowH + _t.Layout.ItemGap;

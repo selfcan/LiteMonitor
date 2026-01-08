@@ -241,12 +241,12 @@ namespace LiteMonitor.ThemeEditor
                 {
                     Text = label,
                     Location = new Point((int)(10 * dpiScale), y + (int)(4 * dpiScale)),
-                    Width = (int)(200 * dpiScale)
+                    Width = (int)(240 * dpiScale)
                 });
 
                 var n = new NumericUpDown
                 {
-                    Location = new Point((int)(220 * dpiScale), y),
+                    Location = new Point((int)(260 * dpiScale), y),
                     Width = (int)(100 * dpiScale),
                     Minimum = 0,
                     Maximum = 2000,
@@ -262,9 +262,18 @@ namespace LiteMonitor.ThemeEditor
             var L = _theme.Layout;
 
             //AddNum("界面宽度 / Width (px)", () => L.Width, v => L.Width = v);
+            pageLayout.Controls.Add(new Label
+            {
+                Text = "窗体圆角设置 仅win10下有效",
+                Location = new Point((int)(10 * dpiScale), y),
+                Width = (int)(350 * dpiScale),
+                ForeColor = Color.Gray,
+                Font = new Font("Microsoft YaHei UI", 8f)
+            });
+            y += (int)(25 * dpiScale);
+            AddNum("窗体圆角 / CornerRadius (px)", () => L.CornerRadius, v => L.CornerRadius = v);
             AddNum("行高 / RowHeight (px)", () => L.RowHeight, v => L.RowHeight = v);
             AddNum("内边距 / Padding (px)", () => L.Padding, v => L.Padding = v);
-            AddNum("窗体圆角 / CornerRadius (px)", () => L.CornerRadius, v => L.CornerRadius = v);
             AddNum("组块圆角 / GroupRadius (px)", () => L.GroupRadius, v => L.GroupRadius = v);
             AddNum("组块内边距 / GroupPadding (px)", () => L.GroupPadding, v => L.GroupPadding = v);
             AddNum("组块间距 / GroupSpacing (px)", () => L.GroupSpacing, v => L.GroupSpacing = v);

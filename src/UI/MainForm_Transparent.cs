@@ -1,8 +1,9 @@
 using LiteMonitor.src.Core;
 using LiteMonitor.src.SystemServices;
 using System.Runtime.InteropServices;
-using System.Diagnostics; // ★ 必须添加引用
+using System.Diagnostics;
 using LiteMonitor.src.UI;
+using System.Drawing.Drawing2D;
 
 namespace LiteMonitor
 {
@@ -13,19 +14,34 @@ namespace LiteMonitor
         private readonly NotifyIcon _tray = new();
         private Point _dragOffset;
 
+        // =================================================================
+        // ★★★ 新增：Win11 原生圆角 API 定义 (DWM)
+        // =================================================================
+        [DllImport("dwmapi.dll")]
+        private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
+
+        private const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
+        private const int DWMWCP_DEFAULT = 0;
+        private const int DWMWCP_DONT_ROUND = 1;
+        private const int DWMWCP_ROUND = 2;
+        private const int DWMWCP_ROUNDSMALL = 3;
+
+        // ★★★ 修复：使用 unchecked 处理 uint 到 int 的溢出转换
+        private const int DWMWA_BORDER_COLOR = 34;
+        private const int DWMWA_COLOR_NONE = unchecked((int)0xFFFFFFFE); 
+
+        // =================================================================
+
         // 防止 Win11 自动隐藏无边框 + 无任务栏窗口
         protected override CreateParams CreateParams
         {
             get
             {
                 var cp = base.CreateParams;
-
-                // WS_EX_TOOLWINDOW: 防止被系统降为后台工具窗口 → 解决“失焦后自动消失”
-                cp.ExStyle |= 0x00000080;
-
+                // WS_EX_TOOLWINDOW: 防止被系统降为后台工具窗口
+                cp.ExStyle |= 0x80;
                 // 可选：避免 Win11 某些情况错误认为是 AppWindow
                 cp.ExStyle &= ~0x00040000; // WS_EX_APPWINDOW
-
                 return cp;
             }
         }
@@ -49,8 +65,10 @@ namespace LiteMonitor
             {
                 int ex = GetWindowLong(Handle, GWL_EXSTYLE);
                 if (enable)
+                    // 开启穿透：必须叠加 Layered 属性，否则 Transparent 可能无效
                     SetWindowLong(Handle, GWL_EXSTYLE, ex | WS_EX_TRANSPARENT | WS_EX_LAYERED);
                 else
+                    // 关闭穿透
                     SetWindowLong(Handle, GWL_EXSTYLE, ex & ~WS_EX_TRANSPARENT);
             }
             catch { }
@@ -88,11 +106,8 @@ namespace LiteMonitor
 
             var cursor = Cursor.Position;
 
-            // ===== 模式判断 =====
-            // bool isHorizontal = _cfg.HorizontalMode;
-
             // ===== 无论横竖模式都支持上、左、右三边靠边隐藏 =====
-            bool nearLeft = Left <= area.Left + _hideThreshold; 
+            bool nearLeft = Left <= area.Left + _hideThreshold;
             bool nearRight = area.Right - Right <= _hideThreshold;
             bool nearTop = Top <= area.Top + _hideThreshold;
             //bool nearBottom = area.Bottom - Bottom <= _hideThreshold; //下方不隐藏 会和任务量冲突
@@ -131,7 +146,7 @@ namespace LiteMonitor
 
                 // 关键修复：只有当鼠标在隐藏的面板区域内时，才显示面板
                 bool isMouseOnHiddenPanel = false;
-                
+
                 // ========= 统一处理上、左、右三边检测 =========
                 if (_dock == DockEdge.Right)
                     isMouseOnHiddenPanel = cursor.X >= area.Right - _hideWidth && cursor.Y >= Top && cursor.Y <= Top + Height;
@@ -201,7 +216,7 @@ namespace LiteMonitor
                     {
                         _taskbar.Show();
                         // 额外调用一次 Reload 以确保颜色/字体等其他非屏幕配置也刷新
-                        _taskbar.ReloadLayout(); 
+                        _taskbar.ReloadLayout();
                     }
                 }
             }
@@ -215,10 +230,6 @@ namespace LiteMonitor
                 }
             }
         }
-
-
-
-
 
         // ========== 构造函数 ==========
         public MainForm()
@@ -241,6 +252,9 @@ namespace LiteMonitor
             TopMost = _cfg.TopMost;
             DoubleBuffered = true;
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+            // 开启透明背景支持 (对 Win10 Region 方案有帮助)
+            SetStyle(ControlStyles.SupportsTransparentBackColor, true);
+            
             AutoScaleMode = AutoScaleMode.Dpi;
 
             // 1. 加载历史流量数据
@@ -260,7 +274,7 @@ namespace LiteMonitor
             // 现在主题已可用，再设置背景色与菜单
             BackColor = ThemeManager.ParseColor(ThemeManager.Current.Color.Background);
 
-           // 1. 只把菜单生成出来，赋值给窗体备用（但不赋值给 _tray.ContextMenuStrip）
+            // 1. 只把菜单生成出来，赋值给窗体备用（但不赋值给 _tray.ContextMenuStrip）
             ContextMenuStrip = MenuManager.Build(this, _cfg, _ui);
 
             // 2. 手动监听托盘的鼠标抬起事件
@@ -271,18 +285,18 @@ namespace LiteMonitor
                 {
                     // ★关键步骤A：必须先激活一下主窗口（即使它是隐藏的），
                     // 否则菜单弹出后，点击屏幕其他地方菜单不会自动消失
-                    
+
                     // 注意：这里使用 Win32 API 激活可能比 this.Activate() 更稳，
                     // 但对于隐藏窗口，只需确保 MessageLoop 能收到消息即可。
                     // 简单处理：
                     SetForegroundWindow(Handle); // 下面会补充这个 API 定义
-                    
+
                     // ★关键步骤B：在当前鼠标光标位置强制弹出
                     // 这样就完全绕过了 WinForms 对多屏 DPI 的错误计算
                     ContextMenuStrip?.Show(Cursor.Position);
                 }
             };
-            
+
             // 托盘图标双击 → 显示主窗口
             _tray.MouseDoubleClick += (_, e) =>
             {
@@ -292,7 +306,7 @@ namespace LiteMonitor
                 }
             };
 
-        
+
 
             // === 拖拽移动 ===
             MouseDown += (_, e) =>
@@ -322,7 +336,7 @@ namespace LiteMonitor
                     SavePos();
                 }
             };
-           // === 双击事件重构 ===
+            // === 双击事件重构 ===
             this.DoubleClick += (_, __) =>
             {
                 switch (_cfg.MainFormDoubleClickAction)
@@ -344,40 +358,103 @@ namespace LiteMonitor
             };
 
 
-            // === 渐入透明度 ===
-            Opacity = 0;
+            // === 渐入透明度 (标准 WinForms 方式) ===
+            this.Opacity = 0;
             double targetOpacity = Math.Clamp(_cfg.Opacity, 0.1, 1.0);
+
             _ = System.Threading.Tasks.Task.Run(async () =>
             {
                 try
                 {
-                    while (Opacity < targetOpacity)
+                    double current = 0;
+                    while (current < targetOpacity)
                     {
                         await System.Threading.Tasks.Task.Delay(16).ConfigureAwait(false);
-                        BeginInvoke(new Action(() => Opacity = Math.Min(targetOpacity, Opacity + 0.05)));
+                        // 在 UI 线程更新
+                        BeginInvoke(new Action(() => 
+                        {
+                            current += 0.05;
+                            if (current > targetOpacity) current = targetOpacity;
+                            this.Opacity = current;
+                        }));
+                        if (current >= targetOpacity) break;
                     }
                 }
                 catch { }
             });
 
+            // 初始化圆角
             ApplyRoundedCorners();
             this.Resize += (_, __) => ApplyRoundedCorners();
 
             // === 状态恢复 ===
             if (_cfg.ClickThrough) SetClickThrough(true);
             if (_cfg.AutoHide) InitAutoHideTimer();
-
-            
-
-
         }
+
+        // =================================================================
+        // ★★★ 核心修改：智能圆角方案 (Hybrid) ★★★
+        // Win11+: 使用 DWM 原生无锯齿圆角 + 去除边框
+        // Win10-: 回退使用 Region 切割 (保留原有逻辑)
+        // =================================================================
+        private void ApplyRoundedCorners()
+        {
+            try
+            {
+                // 检测是否为 Windows 11 (Build >= 22000)
+                bool isWin11 = Environment.OSVersion.Version.Major >= 10 && Environment.OSVersion.Version.Build >= 22000;
+
+                if (isWin11)
+                {
+                    // 【Win11 模式】
+                    // 必须清空 Region，否则 DWM 圆角会被覆盖
+                    this.Region = null;
+
+                    // 1. 开启系统圆角
+                    int preference = DWMWCP_ROUND;
+                    DwmSetWindowAttribute(this.Handle, DWMWA_WINDOW_CORNER_PREFERENCE, ref preference, sizeof(int));
+
+                    // 2. 去除系统默认的灰色边框 (Color = None)
+                    int borderColor = DWMWA_COLOR_NONE;
+                    DwmSetWindowAttribute(this.Handle, DWMWA_BORDER_COLOR, ref borderColor, sizeof(int));
+                }
+                else
+                {
+                    // 【Win10 / 旧系统模式】
+                    // 保持原有的 Region 切割逻辑，虽然有锯齿但兼容性好
+                    var t = ThemeManager.Current;
+                    int r = Math.Max(0, t.Layout.CornerRadius);
+                    
+                    // 若无圆角需求，清除 Region
+                    if (r == 0)
+                    {
+                        this.Region = null;
+                        return;
+                    }
+
+                    using var gp = new System.Drawing.Drawing2D.GraphicsPath();
+                    int d = r * 2;
+                    gp.AddArc(0, 0, d, d, 180, 90);
+                    gp.AddArc(Width - d, 0, d, d, 270, 90);
+                    gp.AddArc(Width - d, Height - d, d, d, 0, 90);
+                    gp.AddArc(0, Height - d, d, d, 90, 90);
+                    gp.CloseFigure();
+                    
+                    Region?.Dispose();
+                    Region = new Region(gp);
+                }
+            }
+            catch { }
+        }
+
+
         // ★★★ 新增：通用动作方法 (供 TaskbarForm 和 本地调用) ★★★
         public void OpenTaskManager()
         {
-            try 
-            { 
-                Process.Start(new ProcessStartInfo("taskmgr") { UseShellExecute = true }); 
-            } 
+            try
+            {
+                Process.Start(new ProcessStartInfo("taskmgr") { UseShellExecute = true });
+            }
             catch { }
         }
 
@@ -406,6 +483,10 @@ namespace LiteMonitor
             _cfg.Save();
             _ui.ApplyTheme(_cfg.Skin);
             RebuildMenus();
+            
+            // 强制触发一次重绘和圆角计算
+            this.Invalidate();
+            ApplyRoundedCorners();
         }
 
         public void ShowMainWindow()
@@ -487,8 +568,17 @@ namespace LiteMonitor
         }
 
 
-
-        protected override void OnPaint(PaintEventArgs e) => _ui?.Render(e.Graphics);
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            _ui?.Render(e.Graphics);
+        }
+        // 覆盖此方法并留空，是为了防止 WinForms 在重绘时用 BackColor 清除屏幕，
+        // 配合 UIController 的顺序调整，能彻底解决“闪烁”问题。
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            // 什么都不做，禁止默认的擦除行为
+        }
 
         /// <summary>
         /// DPI变化时重新计算布局
@@ -498,16 +588,20 @@ namespace LiteMonitor
             base.OnDpiChanged(e);
             // DPI变化时重新应用主题以适配新DPI
             _ui?.ApplyTheme(_cfg.Skin);
+            
+            // 重新计算圆角（Region模式下需要）
+            ApplyRoundedCorners();
+            this.Invalidate();
         }
 
         private void SavePos()
         {
-            ClampToScreen(); 
-            
+            ClampToScreen();
+
             // ★★★ 优化：使用中心点判断屏幕，比 FromControl 更靠谱 (防止跨屏边缘识别错误) ★★★
             var center = new Point(Left + Width / 2, Top + Height / 2);
             var scr = Screen.FromPoint(center);
-            
+
             _cfg.ScreenDevice = scr.DeviceName;
             _cfg.Position = new Point(Left, Top);
             _cfg.Save();
@@ -583,9 +677,12 @@ namespace LiteMonitor
             // ========================================================
             if (_cfg.HorizontalMode && _ui != null)
             {
-                _ui.Render(CreateGraphics());   // 完成布局
-                this.Update();                  // 刷新位置
+                // 这里可能需要调整尺寸
+                this.Size = new Size(this.Width, this.Height);
             }
+
+            // 确保圆角生效
+            ApplyRoundedCorners();
 
             // === 根据配置启动任务栏模式 ===
             if (_cfg.ShowTaskbar)
@@ -610,7 +707,7 @@ namespace LiteMonitor
                 // 2. 方式 A：弹出气泡提示（推荐，不打扰）
                 string title = "⚡️LiteMonitor_v" + UpdateChecker.GetCurrentVersion();
                 string content = _cfg.Language == "zh" ? "🎉 软件已成功更新到最新版本！" : "🎉 Software updated to latest version!";
-                ShowNotification(title, content, ToolTipIcon.Info); 
+                ShowNotification(title, content, ToolTipIcon.Info);
 
                 // 2. 方式 B：或者弹窗提示（如果你喜欢强提醒）
                 // MessageBox.Show("软件已成功更新到最新版本！", "更新成功", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -626,12 +723,12 @@ namespace LiteMonitor
                 _tray.ShowBalloonTip(5000, title, text, icon);
             }
         }
-        
+
         /// <summary>
         /// 窗体关闭时清理资源：释放 UIController 并隐藏托盘图标
         /// </summary>
         protected override void OnFormClosed(FormClosedEventArgs e)
-        {   
+        {
             // 退出时必须强制存一次最新的配置
             _cfg.Save(); // 保存配置
             TrafficLogger.Save(); // 退出时强制保存一次流量数据
@@ -639,26 +736,6 @@ namespace LiteMonitor
             _ui?.Dispose();      // 释放 UI 资源
             _tray.Visible = false; // 隐藏托盘图标
         }
-
-        private void ApplyRoundedCorners()
-        {
-            try
-            {
-                var t = ThemeManager.Current;
-                int r = Math.Max(0, t.Layout.CornerRadius);
-                using var gp = new System.Drawing.Drawing2D.GraphicsPath();
-                int d = r * 2;
-                gp.AddArc(0, 0, d, d, 180, 90);
-                gp.AddArc(Width - d, 0, d, d, 270, 90);
-                gp.AddArc(Width - d, Height - d, d, d, 0, 90);
-                gp.AddArc(0, Height - d, d, d, 90, 90);
-                gp.CloseFigure();
-                Region?.Dispose();
-                Region = new Region(gp);
-            }
-            catch { }
-        }
-
 
     }
 }

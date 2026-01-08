@@ -51,9 +51,9 @@ namespace LiteMonitor
             }
         }
 
+        // ★★★★★ [核心修复] 解决闪烁和边距不对称 ★★★★★
         public void ApplyTheme(string name)
         {
-            // LanguageManager.Load(_cfg.Language);
             ThemeManager.Load(name);
             UIRenderer.ClearCache();
             var t = ThemeManager.Current;
@@ -63,27 +63,36 @@ namespace LiteMonitor
             float finalScale = dpiScale * userScale;
 
             t.Scale(dpiScale, userScale);
+
+            // [修复2：边距不对称]
+            // 不要设置 Width，而是设置 ClientSize。
+            // 这确保了“实际绘图区域”严格等于 t.Layout.Width，消除了边框/阴影导致的右侧裁切误差。
             if (!_cfg.HorizontalMode)
             {
                 t.Layout.Width = (int)(_cfg.PanelWidth * finalScale);
-                _form.Width = t.Layout.Width;
+                // 仅设置宽度，保持高度不变(高度由 Render 决定)，或者给个初值
+                _form.ClientSize = new Size(t.Layout.Width, _form.ClientSize.Height);
             }
 
-            _form.BackColor = ThemeManager.ParseColor(t.Color.Background);
             TaskbarRenderer.ReloadStyle(_cfg);
 
             _layout = new UILayout(t);
             _hxLayout = null;
 
+            // [修复1：闪烁问题]
+            // 将 BuildMetrics (耗时操作) 移到设置 BackColor 之前。
+            // 这样在耗时计算期间，界面还保持旧样子，计算完后瞬间变色并重绘内容。
             BuildMetrics();
+            BuildHorizontalColumns();
             _layoutDirty = true;
 
-            BuildHorizontalColumns();
+            // 数据准备好后，再设置背景色，紧接着立刻刷新
+            _form.BackColor = ThemeManager.ParseColor(t.Color.Background);
 
             _timer.Interval = Math.Max(80, _cfg.RefreshMs);
             _form.Invalidate();
             _form.Update();
-            UIUtils.ClearBrushCache(); // 确保你有这个静态方法清空字典
+            UIUtils.ClearBrushCache(); 
         }
 
         public void RebuildLayout()
@@ -93,7 +102,6 @@ namespace LiteMonitor
             _layoutDirty = true;
             _form.Invalidate();
             _form.Update();
-            
         }
 
         public void SetDragging(bool dragging) => _dragging = dragging;
@@ -111,8 +119,10 @@ namespace LiteMonitor
                 if (_layoutDirty)
                 {
                     int h = _hxLayout.Build(_hxColsHorizontal);
-                    _form.Width = _hxLayout.PanelWidth;
-                    _form.Height = h;
+                    // 同样建议横屏模式也使用 ClientSize
+                    // _form.Width = ... 
+                    // _form.Height = h;
+                    _form.ClientSize = new Size(_hxLayout.PanelWidth, h);
                     _layoutDirty = false;
                 }
                 HorizontalRenderer.Render(g, t, _hxColsHorizontal, _hxLayout.PanelWidth);
@@ -123,7 +133,8 @@ namespace LiteMonitor
             if (_layoutDirty)
             {
                 int h = _layout.Build(_groups);
-                _form.Height = h;
+                // [修复2补充] 设置高度时也使用 ClientSize，确保高度精准
+                _form.ClientSize = new Size(_form.ClientSize.Width, h);
                 _layoutDirty = false;
             }
 
@@ -175,8 +186,6 @@ namespace LiteMonitor
             }
         }
 
-        // ★★★★★ [核心重构] 动态构建竖屏指标 ★★★★★
-        // ★★★★★ [核心重构] 动态构建竖屏指标 ★★★★★
         private void BuildMetrics()
         {
             _groups = new List<GroupLayoutInfo>();
@@ -193,8 +202,6 @@ namespace LiteMonitor
 
             foreach (var cfgItem in activeItems)
             {
-                // ★★★ 修改：直接使用统一的 UIGroup 属性 ★★★
-                // 删掉了原本的 Split 和 if 判断
                 string groupKey = cfgItem.UIGroup;
 
                 if (groupKey != currentGroupKey && currentGroupList.Count > 0)
@@ -225,14 +232,9 @@ namespace LiteMonitor
             }
         }
 
-        // ★★★★★ [核心重构] 动态构建横屏/任务栏列 ★★★★★
         private void BuildHorizontalColumns()
         {
-            // 1. 构建主面板横屏列 (基于 VisibleInPanel)
             _hxColsHorizontal = BuildColumnsCore(forTaskbar: false);
-
-            // 2. 构建任务栏列 (基于 VisibleInTaskbar)
-            // 实现了"任务栏只看重要项"的需求
             _hxColsTaskbar = BuildColumnsCore(forTaskbar: true);
         }
 
@@ -240,16 +242,9 @@ namespace LiteMonitor
         {
             var cols = new List<Column>();
 
-            // 1. 筛选 (保持不变)
             var query = _cfg.MonitorItems
                 .Where(x => forTaskbar ? x.VisibleInTaskbar : x.VisibleInPanel);
 
-            // 2. 排序 (★ 修改此处 ★)
-            // 逻辑：
-            // A. 如果正在构建任务栏 (forTaskbar == true) -> 使用 TaskbarSortIndex
-            // B. 如果正在构建主界面横条 (forTaskbar == false) 且 开启了跟随 (HorizontalFollowsTaskbar) -> 使用 TaskbarSortIndex
-            // C. 其他情况 (普通主界面排序) -> 使用 SortIndex
-            
             if (forTaskbar || _cfg.HorizontalFollowsTaskbar)
             {
                 query = query.OrderBy(x => x.TaskbarSortIndex);
@@ -261,7 +256,6 @@ namespace LiteMonitor
 
             var items = query.ToList();
 
-            // 3. 两两配对 (保持不变)
             bool singleLine = forTaskbar && _cfg.TaskbarSingleLine;
             int step = singleLine ? 1 : 2;
 
@@ -285,7 +279,6 @@ namespace LiteMonitor
             var item = new MetricItem 
             { 
                 Key = cfg.Key 
-                // 横屏模式下 Label 通常不显示或自动缩写，这里主要为了数据绑定
             };
             InitMetricValue(item);
             return item;
@@ -302,40 +295,32 @@ namespace LiteMonitor
         private void CheckTemperatureAlert()
         {
             if (!_cfg.AlertTempEnabled) return;
-            // 3分钟冷却时间，避免频繁弹窗
             if ((DateTime.Now - _cfg.LastAlertTime).TotalMinutes < 3) return;
 
-            int globalThreshold = _cfg.AlertTempThreshold; // 默认 80
-            // ★ 针对磁盘给一个更灵敏的阈值 (硬盘超过60度通常就需要关注了)
+            int globalThreshold = _cfg.AlertTempThreshold; 
             int diskThreshold = Math.Min(globalThreshold - 20, 60); 
 
             List<string> alertLines = new List<string>();
             string alertTitle = LanguageManager.T("Menu.AlertTemp"); 
 
-            // 1. CPU
             float? cpuTemp = _mon.Get("CPU.Temp");
             if (cpuTemp.HasValue && cpuTemp.Value >= globalThreshold)
                 alertLines.Add($"CPU {alertTitle}: 🔥{cpuTemp:F0}°C");
 
-            // 2. GPU
             float? gpuTemp = _mon.Get("GPU.Temp");
             if (gpuTemp.HasValue && gpuTemp.Value >= globalThreshold)
                 alertLines.Add($"GPU {alertTitle}: 🔥{gpuTemp:F0}°C");
 
-            // ★★★ 3. 主板 (MOBO) ★★★
             float? moboTemp = _mon.Get("MOBO.Temp");
             if (moboTemp.HasValue && moboTemp.Value >= globalThreshold)
                 alertLines.Add($"MOBO {alertTitle}: 🔥{moboTemp:F0}°C");
 
-            // ★★★ 4. 磁盘 (DISK) - 使用更严格的阈值 ★★★
             float? diskTemp = _mon.Get("DISK.Temp");
             if (diskTemp.HasValue && diskTemp.Value >= diskThreshold)
                 alertLines.Add($"DISK {alertTitle}: 🔥{diskTemp:F0}°C (>{diskThreshold}°C)");
 
-            // 触发报警
             if (alertLines.Count > 0)
             {
-                // 如果只有磁盘报警，标题显示磁盘的阈值，否则显示全局阈值
                 string thresholdText = (alertLines.Count == 1 && alertLines[0].StartsWith("DISK")) 
                     ? $"(>{diskThreshold}°C)" 
                     : $"(>{globalThreshold}°C)";

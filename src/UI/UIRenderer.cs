@@ -21,12 +21,17 @@ namespace LiteMonitor
             g.SmoothingMode = SmoothingMode.AntiAlias;
 
             // 1. 绘制背景
-            int bgH = (groups.Count > 0)
-                ? groups[^1].Bounds.Bottom + t.Layout.GroupBottom + t.Layout.Padding
-                : t.Layout.Padding * 2;
+            // ★★★ 修复：不再手动计算高度，而是直接填满整个画布 ★★★
+            // 原逻辑：
+            // int bgH = (groups.Count > 0)
+            //     ? groups[^1].Bounds.Bottom + t.Layout.GroupBottom + t.Layout.Padding
+            //     : t.Layout.Padding * 2;
+            // g.FillRectangle(UIUtils.GetBrush(t.Color.Background), new Rectangle(0, 0, t.Layout.Width, bgH));
 
-            // ★★★ 优化：使用 UIUtils.GetBrush ★★★
-            g.FillRectangle(UIUtils.GetBrush(t.Color.Background), new Rectangle(0, 0, t.Layout.Width, bgH));
+            // 新逻辑：确保背景铺满整个窗口区域，防止因高度计算误差导致底部出现1px缝隙或黑边
+            // 这对于 DWM 原生圆角方案尤为重要，因为我们需要提供完整的背景供系统裁剪
+            g.FillRectangle(UIUtils.GetBrush(t.Color.Background), 
+                new Rectangle(0, 0, (int)g.VisibleClipBounds.Width + 1, (int)g.VisibleClipBounds.Height + 1));
 
             // 2. 绘制主标题
             DrawMainTitle(g, t);
@@ -54,7 +59,9 @@ namespace LiteMonitor
 
             // 直接使用字体高度，不需要测量
             int titleH = t.FontTitle.Height;
-            var titleRect = new Rectangle(t.Layout.Padding, t.Layout.Padding, t.Layout.Width - t.Layout.Padding * 2, titleH + 4);
+            // ★★★ [优化] 标题下方的微调间距也要随 DPI 缩放 ★★★
+            int titlePadding = (int)(4 * t.Layout.LayoutScale);
+            var titleRect = new Rectangle(t.Layout.Padding, t.Layout.Padding, t.Layout.Width - t.Layout.Padding * 2, titleH + titlePadding);
 
             TextRenderer.DrawText(g, title, t.FontTitle, titleRect,
                 ThemeManager.ParseColor(t.Color.TextTitle),
