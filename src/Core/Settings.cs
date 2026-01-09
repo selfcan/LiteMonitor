@@ -331,7 +331,14 @@ namespace LiteMonitor
 
     public class MonitorItemConfig
     {
-        public string Key { get; set; } = "";
+        // ★★★ 核心优化：使用字符串驻留池解决内存浪费 ★★★
+        private string _key = "";
+        public string Key 
+        { 
+            get => _key; 
+            // 自动去重：如果内存中已有 "CPU.Load"，则复用那个引用
+            set => _key = string.Intern(value ?? ""); 
+        }
         public string UserLabel { get; set; } = ""; 
         public string TaskbarLabel { get; set; } = "";
         public bool VisibleInPanel { get; set; } = true;

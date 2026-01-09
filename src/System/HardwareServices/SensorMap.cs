@@ -69,7 +69,7 @@ namespace LiteMonitor.src.SystemServices
         {
             _cfg = cfg;
             // 1. 准备临时容器 (线程安全)
-            var newMap = new Dictionary<string, ISensor>();
+            var newMap = new Dictionary<string, ISensor>(StringComparer.OrdinalIgnoreCase); // 使用忽略大小写的比较器，减少字符串重复
             var newCpuCache = new List<CpuCoreSensors>();
             IHardware? newGpu = null;
             ISensor? newBusSensor = null; // 临时变量
@@ -77,7 +77,7 @@ namespace LiteMonitor.src.SystemServices
             // ★★★ [新增] 临时列表：用于智能匹配 ★★★
             // 注意：这里不再在递归中直接处理风扇匹配，而是收集起来统一交给 ScanAndMapFans 处理
             // 但为了保持原代码结构，我们依然用candidates收集主板相关数据
-            var candidatesMoboTemps = new List<ISensor>();
+            var candidatesMoboTemps = new List<ISensor>(capacity: 10); // 预设容量，减少扩容开销
 
             // 局部递归函数
             void RegisterTo(IHardware hw)
@@ -297,11 +297,11 @@ namespace LiteMonitor.src.SystemServices
             return null;
         }
 
-        // 公共辅助方法
+        // 公共辅助方法 - 优化字符串比较，减少内存分配
         public static bool Has(string source, string sub)
         {
             if (string.IsNullOrEmpty(source) || string.IsNullOrEmpty(sub)) return false;
-            return source.IndexOf(sub, StringComparison.OrdinalIgnoreCase) >= 0;
+            return source.AsSpan().Contains(sub.AsSpan(), StringComparison.OrdinalIgnoreCase); // 使用Span避免内存分配
         }
 
         private bool IsGenericGpuName(string name)

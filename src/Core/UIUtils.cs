@@ -24,26 +24,45 @@ namespace LiteMonitor.src.Core
         public static Size S(Size size) => new Size(S(size.Width), S(size.Height));
         public static Padding S(Padding p) => new Padding(S(p.Left), S(p.Top), S(p.Right), S(p.Bottom));
 
-        // ============================================================
+       // ============================================================
         // ★★★ 优化：画刷缓存机制下沉到此处 ★★★
         // ============================================================
-        private static readonly Dictionary<string, SolidBrush> _brushCache = new();
+        private static readonly Dictionary<string, SolidBrush> _brushCache = new(16);
+        private static readonly object _brushLock = new object(); // 🔒 线程锁
+        private const int MAX_BRUSH_CACHE = 32;
 
         /// <summary>
         /// 获取画刷的公共方法 (自动缓存)
         /// </summary>
         public static SolidBrush GetBrush(string color)
         {
-            // 如果颜色字符串为空，返回透明或默认
-            if (string.IsNullOrEmpty(color)) return (SolidBrush)Brushes.Transparent;
+            if (string.IsNullOrEmpty(color)) 
+                return (SolidBrush)Brushes.Transparent;
 
-            if (!_brushCache.TryGetValue(color, out var br))
+            lock (_brushLock) // 🔒 整个过程加锁
             {
-                // 缓存未命中：创建并存入
-                br = new SolidBrush(ThemeManager.ParseColor(color));
-                _brushCache[color] = br;
+                if (!_brushCache.TryGetValue(color, out var br))
+                {
+                    // ★★★ 防止缓存无限增长 ★★★
+                    if (_brushCache.Count >= MAX_BRUSH_CACHE)
+                    {
+                        // 优化：先 ToList 获取 Keys 副本，再安全删除，避免 "集合已修改" 异常
+                        var keysToRemove = _brushCache.Keys.Take(_brushCache.Count / 2).ToList();
+                        foreach (var k in keysToRemove)
+                        {
+                            if (_brushCache.TryGetValue(k, out var oldBrush))
+                            {
+                                oldBrush.Dispose();
+                                _brushCache.Remove(k);
+                            }
+                        }
+                    }
+
+                    br = new SolidBrush(ThemeManager.ParseColor(color));
+                    _brushCache[color] = br;
+                }
+                return br;
             }
-            return br;
         }
 
         /// <summary>
@@ -51,8 +70,11 @@ namespace LiteMonitor.src.Core
         /// </summary>
         public static void ClearBrushCache()
         {
-            foreach (var b in _brushCache.Values) b.Dispose();
-            _brushCache.Clear();
+            lock (_brushLock) // 🔒 加锁
+            {
+                foreach (var b in _brushCache.Values) b.Dispose();
+                _brushCache.Clear();
+            }
         }
 
         // ============================================================

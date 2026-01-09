@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
@@ -18,6 +19,10 @@ namespace LiteMonitor.ThemeEditor
         private UILayout? _layout;
         private readonly List<GroupLayoutInfo> _groups = new();
         private float _dpiScale = 1.0f;
+        
+        // ★★★ 新增：复用 Bitmap，避免每次 OnPaint 都创建 ★★★
+        private Bitmap? _cachedBitmap;
+        private Size _lastSize;
 
         public ThemePreviewControl()
         {
@@ -127,10 +132,8 @@ namespace LiteMonitor.ThemeEditor
             if (_theme == null || _layout == null)
                 return;
 
-            // 1. 绘制内边距背景 (浅灰/白色)
             e.Graphics.Clear(Color.FromArgb(245, 245, 245));
 
-            // 计算实际内容区域
             Rectangle content = new Rectangle(
                 Padding.Left,
                 Padding.Top,
@@ -138,7 +141,6 @@ namespace LiteMonitor.ThemeEditor
                 Height - Padding.Top - Padding.Bottom
             );
 
-            // 防御：若太小则不画
             if (content.Width <= 0 || content.Height <= 0) return;
 
             try
@@ -147,27 +149,28 @@ namespace LiteMonitor.ThemeEditor
                 var previewLayout = new UILayout(previewTheme);
                 int h = previewLayout.Build(_groups);
                 
-                // ★★★ 核心修复：使用 Bitmap 离屏绘制，物理隔离溢出像素 ★★★
-                // UIRenderer 的 (-5, -5) 绘制操作在这里会因为超出 Bitmap 边界被自然丢弃
-                // 从而彻底解决"预览区边框线"问题
-                
                 int bmpH = Math.Max(1, h);
-                using (Bitmap bmp = new Bitmap(previewTheme.Layout.Width, bmpH))
+                var requiredSize = new Size(previewTheme.Layout.Width, bmpH);
+
+                // ★★★ 核心优化：复用 Bitmap 而非每次新建 ★★★
+                if (_cachedBitmap == null || _lastSize != requiredSize)
                 {
-                    using (Graphics gBmp = Graphics.FromImage(bmp))
-                    {
-                        // 必须开启高质量模式，确保文字清晰
-                        gBmp.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                        gBmp.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
-                        gBmp.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
-
-                        // 在隔离的 Bitmap 上渲染
-                        UIRenderer.Render(gBmp, _groups, previewTheme);
-                    }
-
-                    // 将干净的 Bitmap 贴到控件指定位置
-                    e.Graphics.DrawImageUnscaled(bmp, content.X, content.Y);
+                    _cachedBitmap?.Dispose();
+                    _cachedBitmap = new Bitmap(requiredSize.Width, requiredSize.Height);
+                    _lastSize = requiredSize;
                 }
+
+                using (Graphics gBmp = Graphics.FromImage(_cachedBitmap))
+                {
+                    gBmp.Clear(Color.Transparent); // 清空上次内容
+                    gBmp.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                    gBmp.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+                    gBmp.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
+
+                    UIRenderer.Render(gBmp, _groups, previewTheme);
+                }
+
+                e.Graphics.DrawImageUnscaled(_cachedBitmap, content.X, content.Y);
             }
             catch (Exception ex)
             {
@@ -209,6 +212,19 @@ namespace LiteMonitor.ThemeEditor
             };
             
             return preview;
+        }
+
+        /// <summary>
+        /// 添加释放方法
+        /// </summary>
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _cachedBitmap?.Dispose();
+                _cachedBitmap = null;
+            }
+            base.Dispose(disposing);
         }
 
         protected override void OnResize(EventArgs e)

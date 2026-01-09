@@ -179,7 +179,33 @@ namespace LiteMonitor.src.UI.SettingsPage
         private void ReloadList()
         {
             _container.SuspendLayout();
-            while (_container.Controls.Count > 0) _container.Controls[0].Dispose();
+            
+            // ★★★ 修复事件处理程序泄露：在移除控件之前取消订阅事件 ★★★
+            while (_container.Controls.Count > 0)
+            {
+                var control = _container.Controls[0];
+                
+                if (control is GroupBlock block)
+                {
+                    // ✅ 正确：使用命名方法取消订阅
+                    block.Header.MoveUp -= GroupHeader_MoveUp;
+                    block.Header.MoveDown -= GroupHeader_MoveDown;
+                    
+                    foreach (var row in block.RowsPanel.Controls.OfType<MonitorItemRow>())
+                    {
+                        row.MoveUp -= Row_MoveUp;
+                        row.MoveDown -= Row_MoveDown;
+                    }
+                    // ... dispose logic
+                }
+                else if (control is MonitorItemRow row)
+                {
+                    // ✅ 正确
+                    row.MoveUp -= Row_MoveUp;
+                    row.MoveDown -= Row_MoveDown;
+                }
+                control.Dispose();
+            }
 
             UpdateHeaderLayout();
 
@@ -195,9 +221,10 @@ namespace LiteMonitor.src.UI.SettingsPage
                 for (int i = items.Count - 1; i >= 0; i--)
                 {
                     var row = new MonitorItemRow(items[i]);
-                    row.SetMode(true); 
-                    row.MoveUp += (s, e) => MoveControl(row, -1);
-                    row.MoveDown += (s, e) => MoveControl(row, 1);
+                    row.SetMode(true);
+                    // ✅ 正确：使用命名方法订阅
+                    row.MoveUp += Row_MoveUp; 
+                    row.MoveDown += Row_MoveDown;
                     _container.Controls.Add(row);
                 }
             }
@@ -248,20 +275,57 @@ namespace LiteMonitor.src.UI.SettingsPage
             var rowsPanel = new Panel { Dock = DockStyle.Top, AutoSize = true, BackColor = Color.White };
             var block = new GroupBlock(header, rowsPanel);
 
-            header.MoveUp += (s, e) => MoveControl(block, -1);
-            header.MoveDown += (s, e) => MoveControl(block, 1);
+            // 使用命名方法代替匿名委托，便于后续取消订阅
+            header.MoveUp += GroupHeader_MoveUp;
+            header.MoveDown += GroupHeader_MoveDown;
+            
+            // 保存block引用，以便事件处理程序可以访问它
+            header.Tag = block;
 
             for (int i = items.Count - 1; i >= 0; i--)
             {
                 var row = new MonitorItemRow(items[i]);
                 row.SetMode(false); 
-                row.MoveUp += (s, e) => MoveControl(row, -1);
-                row.MoveDown += (s, e) => MoveControl(row, 1);
+                row.MoveUp += Row_MoveUp;
+                row.MoveDown += Row_MoveDown;
                 rowsPanel.Controls.Add(row);
             }
             return block;
         }
 
+        // ★★★ 新增的命名事件处理方法 ★★★
+        private void GroupHeader_MoveUp(object sender, EventArgs e)
+        {
+            if (sender is MonitorGroupHeader header && header.Tag is GroupBlock block)
+            {
+                MoveControl(block, -1);
+            }
+        }
+        
+        private void GroupHeader_MoveDown(object sender, EventArgs e)
+        {
+            if (sender is MonitorGroupHeader header && header.Tag is GroupBlock block)
+            {
+                MoveControl(block, 1);
+            }
+        }
+        
+        private void Row_MoveUp(object sender, EventArgs e)
+        {
+            if (sender is Control row)
+            {
+                MoveControl(row, -1);
+            }
+        }
+        
+        private void Row_MoveDown(object sender, EventArgs e)
+        {
+            if (sender is Control row)
+            {
+                MoveControl(row, 1);
+            }
+        }
+        
         private void MoveControl(Control c, int dir)
         {
             var p = c.Parent;

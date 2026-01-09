@@ -9,8 +9,8 @@ namespace LiteMonitor.src.SystemServices
 {
     public class DiskManager
     {
-        // ★★★ [新增] 2. 记录每个硬盘最后一次活跃的时间 (用于判断是否深睡) ★★★
-        private Dictionary<IHardware, DateTime> _diskLastActiveTime = new();
+        // ★★★ [新增] 2. 记录每个硬盘最后一次活跃的时间 (用于判断是否深睡)
+        private Dictionary<IHardware, DateTime> _diskLastActiveTime = new Dictionary<IHardware, DateTime>();
         // 磁盘智能缓存
         private IHardware? _cachedDiskHw;
         private DateTime _lastDiskScan = DateTime.MinValue;

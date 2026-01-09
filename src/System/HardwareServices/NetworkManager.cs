@@ -272,7 +272,10 @@ namespace LiteMonitor.src.SystemServices
             try
             {
                 var nics = NetworkInterface.GetAllNetworkInterfaces();
-                var lhmTokens = SplitTokens(lhmName);
+                
+                // 预先分配令牌列表容量
+                var lhmTokens = new List<string>(capacity: 10);
+                SplitTokens(lhmName, lhmTokens);
 
                 foreach (var nic in nics)
                 {
@@ -283,18 +286,63 @@ namespace LiteMonitor.src.SystemServices
                     // 3. 模糊匹配
                     if (lhmTokens.Count > 0 && lhmName.Length > 5) 
                     {
-                        var nicTokens = SplitTokens(nic.Description);
-                        int matchCount = lhmTokens.Intersect(nicTokens, StringComparer.OrdinalIgnoreCase).Count();
-                        if (matchCount > 2 && (double)matchCount / lhmTokens.Count > 0.6) { SetNativeAdapter(nic, state); return; }
+                        var nicTokens = new List<string>(capacity: 10);
+                        SplitTokens(nic.Description, nicTokens);
+                        
+                        // 优化匹配算法，减少内存分配
+                        int matchCount = 0;
+                        foreach (var token in lhmTokens)
+                        {
+                            if (nicTokens.Contains(token, StringComparer.OrdinalIgnoreCase))
+                            {
+                                matchCount++;
+                                if (matchCount > 2) break; // 提前退出，满足条件即可
+                            }
+                        }
+                        
+                        if (matchCount > 2 && (double)matchCount / lhmTokens.Count > 0.6)
+                        {
+                            SetNativeAdapter(nic, state); 
+                            return;
+                        }
                     }
                 }
             }
             catch { state.NativeAdapter = null; }
         }
-
+        private static readonly char[] _tokenSeparators = { ' ', '(', ')', '[', ']', '-', '_', '#' };
+        // 优化的SplitTokens方法，使用预分配的列表减少内存分配
+        private void SplitTokens(string input, List<string> result)
+        {
+            result.Clear();
+            int startIndex = 0;
+            int length = input.Length;
+            //char[] _tokenSeparators = { ' ', '(', ')', '[', ']', '-', '_', '#' };
+            
+            for (int i = 0; i < length; i++)
+            {
+                if (Array.IndexOf(_tokenSeparators, input[i]) >= 0)
+                {
+                    if (i > startIndex)
+                    {
+                        result.Add(input.Substring(startIndex, i - startIndex));
+                    }
+                    startIndex = i + 1;
+                }
+            }
+            
+            if (startIndex < length)
+            {
+                result.Add(input.Substring(startIndex));
+            }
+        }
+        
+        // 保持向后兼容性
         private List<string> SplitTokens(string input)
         {
-            return input.Split(new[] { ' ', '(', ')', '[', ']', '-', '_', '#' }, StringSplitOptions.RemoveEmptyEntries).ToList();
+            var result = new List<string>(capacity: 10);
+            SplitTokens(input, result);
+            return result;
         }
 
         private void SetNativeAdapter(NetworkInterface nic, NetworkState state)

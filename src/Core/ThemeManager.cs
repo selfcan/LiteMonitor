@@ -210,9 +210,11 @@ namespace LiteMonitor.src.Core
     public static class ThemeManager
     {
         public static Theme Current { get; private set; } = new Theme();
-        // 在 ThemeManager 类内部，ParseColor 方法的上面或类的顶部
-        private static readonly Dictionary<string, Color> _colorCache = new();
-
+        
+        // ★★★ 优化 + 安全：添加锁机制 ★★★
+        private static readonly Dictionary<string, string> _stringPool = new(StringComparer.Ordinal);
+        private static readonly Dictionary<string, Color> _colorCache = new(32);
+        private static readonly object _lock = new object(); // 🔒 线程锁
 
         public static string ThemeDir
         {
@@ -282,76 +284,89 @@ namespace LiteMonitor.src.Core
                 return fallback;
             }
         }
-
+        
+        /// <summary>
+        /// 字符串池化：优化内存占用，避免重复字符串。
+        /// </summary>
+        private static string Intern(string str)
+        {
+            if (string.IsNullOrEmpty(str)) return string.Empty;
+            
+            lock (_lock) // 🔒 加锁
+            {
+                if (!_stringPool.TryGetValue(str, out var pooled))
+                {
+                    pooled = string.Intern(str);
+                    _stringPool[str] = pooled;
+                }
+                return pooled;
+            }
+        }
         /// <summary>
         /// 颜色解析：
         /// - 支持 #RRGGBB / #AARRGGBB
         /// - 支持 rgba(r,g,b,a)（a ∈ [0,1]）
         /// </summary>
-                public static Color ParseColor(string s)
+        public static Color ParseColor(string colorStr)
         {
-            if (string.IsNullOrWhiteSpace(s)) return Color.White;
-            s = s.Trim();
+            if (string.IsNullOrWhiteSpace(colorStr)) 
+                return Color.Transparent;
 
-            // ★ 1. 查缓存 (命中直接返回，大幅降低 CPU 占用)
-            if (_colorCache.TryGetValue(s, out var cachedColor))
-                return cachedColor;
-
-            Color result = Color.White; // 默认值
-
-            // rgba(r,g,b,a) 格式
-            if (s.StartsWith("rgba", StringComparison.OrdinalIgnoreCase))
+            string key = Intern(colorStr);
+            
+            // 🔒 读缓存加锁
+            lock (_lock)
             {
-                try
-                {
-                    var nums = s.Replace("rgba", "", StringComparison.OrdinalIgnoreCase)
-                                .Trim('(', ')')
-                                .Split(',', StringSplitOptions.RemoveEmptyEntries);
-
-                    if (nums.Length >= 4 &&
-                        int.TryParse(nums[0], out int r) &&
-                        int.TryParse(nums[1], out int g) &&
-                        int.TryParse(nums[2], out int b) &&
-                        float.TryParse(nums[3], out float a))
-                    {
-                        result = Color.FromArgb((int)(Math.Clamp(a, 0f, 1f) * 255), r, g, b);
-                    }
-                }
-                catch { /* ignore parse error */ }
+                if (_colorCache.TryGetValue(key, out var cached))
+                    return cached;
             }
-            // #RRGGBB / #AARRGGBB
-            else
-            {
-                string hex = s;
-                if (hex.StartsWith("#")) hex = hex[1..];
 
-                try
-                {
+            Color color;
+            if (colorStr.StartsWith('#'))
+            {
+                ReadOnlySpan<char> hex = colorStr.AsSpan(1);
+                try {
                     if (hex.Length == 6)
                     {
-                        int r = Convert.ToInt32(hex[..2], 16);
-                        int g = Convert.ToInt32(hex.Substring(2, 2), 16);
-                        int b = Convert.ToInt32(hex.Substring(4, 2), 16);
-                        result = Color.FromArgb(255, r, g, b);
+                        int r = Convert.ToInt32(hex.Slice(0, 2).ToString(), 16);
+                        int g = Convert.ToInt32(hex.Slice(2, 2).ToString(), 16);
+                        int b = Convert.ToInt32(hex.Slice(4, 2).ToString(), 16);
+                        color = Color.FromArgb(r, g, b);
                     }
                     else if (hex.Length == 8)
                     {
-                        int a = Convert.ToInt32(hex[..2], 16);
-                        int r = Convert.ToInt32(hex.Substring(2, 2), 16);
-                        int g = Convert.ToInt32(hex.Substring(4, 2), 16);
-                        int b = Convert.ToInt32(hex.Substring(6, 2), 16);
-                        result = Color.FromArgb(a, r, g, b);
+                        int a = Convert.ToInt32(hex.Slice(0, 2).ToString(), 16);
+                        int r = Convert.ToInt32(hex.Slice(2, 2).ToString(), 16);
+                        int g = Convert.ToInt32(hex.Slice(4, 2).ToString(), 16);
+                        int b = Convert.ToInt32(hex.Slice(6, 2).ToString(), 16);
+                        color = Color.FromArgb(a, r, g, b);
                     }
-                }
-                catch
-                {
-                    // ignore
-                }
+                    else
+                    {
+                        color = Color.Transparent;
+                    }
+                } catch { color = Color.Transparent; }
+            }
+            else
+            {
+                color = Color.FromName(colorStr);
             }
 
-            // ★ 2. 写入缓存
-            _colorCache[s] = result;
-            return result;
+            // 🔒 写缓存加锁
+            lock (_lock)
+            {
+                _colorCache[key] = color;
+            }
+            return color;
+        }
+
+        public static void ClearCaches()
+        {
+            lock (_lock) // 🔒 加锁
+            {
+                _colorCache.Clear();
+                _stringPool.Clear();
+            }
         }
     }
 }
