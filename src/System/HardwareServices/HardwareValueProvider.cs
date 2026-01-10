@@ -22,15 +22,15 @@ namespace LiteMonitor.src.SystemServices
         private PerformanceCounter? _cpuPerfCounter;
         private float _lastSystemCpuLoad = 0f;
 
-        // ★★★ [新增] 错误重试计数器，防止无限重建 ★★★
+        // ★★★ 错误重试计数器 ★★★
         private int _perfCounterErrorCount = 0;
         private DateTime _lastPerfCounterRetry = DateTime.MinValue;
 
-        // ★★★ [新增] Tick 级智能缓存 (防止同帧重复计算) ★★★
+        // ★★★ Tick 级智能缓存 (防止同帧重复计算) ★★★
         private readonly Dictionary<string, float> _tickCache = new();
 
         // ★★★ [终极优化] 对象级缓存：(Sensor对象, 配置来源字符串) ★★★
-        // 缓存住找到的 ISensor 对象，彻底消除每秒的字符串解析和遍历开销
+        // 缓存住找到的 ISensor 对象指针，彻底消除每秒的字符串解析和遍历开销
         private readonly Dictionary<string, (ISensor Sensor, string ConfigSource)> _manualSensorCache = new();
 
         public HardwareValueProvider(Computer c, Settings s, SensorMap map, NetworkManager net, DiskManager disk, object syncLock, Dictionary<string, float> lastValid)
@@ -44,7 +44,7 @@ namespace LiteMonitor.src.SystemServices
             _lastValidMap = lastValid;
         }
 
-        // ★★★ [新增] 清空缓存（当硬件重启时必须调用，否则持有死对象） ★★★
+        // ★★★ 清空缓存（当硬件重启时调用） ★★★
         public void ClearCache()
         {
             _manualSensorCache.Clear();
@@ -53,16 +53,16 @@ namespace LiteMonitor.src.SystemServices
 
         public void UpdateSystemCpuCounter()
         {
-            // ★★★ [新增] 每一轮更新开始时，清空本轮缓存 ★★★
+            // 每一轮更新开始时，清空本轮缓存
             _tickCache.Clear();
 
             if (_cfg.UseSystemCpuLoad)
             {
-                // ★★★ [优化] 智能重试机制：失败 10 次后，每 30 秒才重试一次 ★★★
+                // 智能重试机制：失败 10 次后，每 30 秒才重试一次
                 if (_cpuPerfCounter == null)
                 {
                     if (_perfCounterErrorCount > 10 && (DateTime.Now - _lastPerfCounterRetry).TotalSeconds < 30)
-                        return; // 冷却中，跳过
+                        return; // 冷却中
 
                     try 
                     { 
@@ -91,7 +91,7 @@ namespace LiteMonitor.src.SystemServices
                         float rawVal = _cpuPerfCounter.NextValue();
                         if (rawVal > 100f) rawVal = 100f;
                         _lastSystemCpuLoad = rawVal;
-                        _perfCounterErrorCount = 0; // 成功则重置错误计数
+                        _perfCounterErrorCount = 0; 
                     }
                     catch 
                     { 
@@ -107,218 +107,199 @@ namespace LiteMonitor.src.SystemServices
             }
         }
 
-
         // ===========================================================
         // ===================== 公共取值入口 =========================
         // ===========================================================
         public float? GetValue(string key)
         {
-            // ★★★ [新增 3] 优先查缓存，如果本帧算过，直接返回 ★★★
+            // 1. 优先查帧缓存 (极速返回)
             if (_tickCache.TryGetValue(key, out float cachedVal)) return cachedVal;
 
             _sensorMap.EnsureFresh(_computer, _cfg);
-
-            // 定义临时结果变量
             float? result = null;
 
-            // 1. CPU.Load
-            if (key == "CPU.Load")
+            // ★★★ [终极优化] 使用 switch 替代 if-else 链 ★★★
+            // 编译器会将其优化为 Hash 跳转表，查找复杂度从 O(N) 降为 O(1)
+            switch (key)
             {
-                if (_cfg.UseSystemCpuLoad)
-                {
-                    result = _lastSystemCpuLoad;
-                }
-                else
-                {
-                    // 手动聚合
-                    var cpu = _computer.Hardware.FirstOrDefault(h => h.HardwareType == HardwareType.Cpu);
-                    if (cpu != null)
+                // --- CPU 相关 ---
+                case "CPU.Load":
+                    if (_cfg.UseSystemCpuLoad)
                     {
-                        double totalLoad = 0;
-                        int coreCount = 0;
-                        foreach (var s in cpu.Sensors)
+                        result = _lastSystemCpuLoad;
+                    }
+                    else
+                    {
+                        var cpu = _computer.Hardware.FirstOrDefault(h => h.HardwareType == HardwareType.Cpu);
+                        if (cpu != null)
                         {
-                            if (s.SensorType != SensorType.Load) continue;
-                            if (SensorMap.Has(s.Name, "Core") && SensorMap.Has(s.Name, "#") && 
-                                !SensorMap.Has(s.Name, "Total") && !SensorMap.Has(s.Name, "SOC") && 
-                                !SensorMap.Has(s.Name, "Max") && !SensorMap.Has(s.Name, "Average"))
+                            double totalLoad = 0;
+                            int coreCount = 0;
+                            foreach (var s in cpu.Sensors)
                             {
-                                if (s.Value.HasValue) { totalLoad += s.Value.Value; coreCount++; }
+                                if (s.SensorType != SensorType.Load) continue;
+                                if (SensorMap.Has(s.Name, "Core") && SensorMap.Has(s.Name, "#") && 
+                                    !SensorMap.Has(s.Name, "Total") && !SensorMap.Has(s.Name, "SOC") && 
+                                    !SensorMap.Has(s.Name, "Max") && !SensorMap.Has(s.Name, "Average"))
+                                {
+                                    if (s.Value.HasValue) { totalLoad += s.Value.Value; coreCount++; }
+                                }
                             }
+                            if (coreCount > 0) result = (float)(totalLoad / coreCount);
                         }
-                        if (coreCount > 0) result = (float)(totalLoad / coreCount);
+                        if (result == null) lock (_lock) { if (_sensorMap.TryGetSensor("CPU.Load", out var s) && s.Value.HasValue) result = s.Value.Value; }
+                        if (result == null) result = 0f;
                     }
-                    
-                    // 兜底
-                    if (result == null)
-                    {
-                        lock (_lock) { if (_sensorMap.TryGetSensor("CPU.Load", out var s) && s.Value.HasValue) result = s.Value.Value; }
-                    }
-                    // 如果还是没值，默认为 0
-                    if (result == null) result = 0f;
-                }
-            }
-            // 2. CPU.Temp
-            else if (key == "CPU.Temp")
-            {
-                float maxTemp = -1000f;
-                bool found = false;
-                var cpu = _computer.Hardware.FirstOrDefault(h => h.HardwareType == HardwareType.Cpu);
-                if (cpu != null)
-                {
-                    foreach (var s in cpu.Sensors)
-                    {
-                        if (s.SensorType != SensorType.Temperature) continue;
-                        if (!s.Value.HasValue || s.Value.Value <= 0) continue;
-                        if (SensorMap.Has(s.Name, "Distance") || SensorMap.Has(s.Name, "Average") || SensorMap.Has(s.Name, "Max")) continue;
-                        if (s.Value.Value > maxTemp) { maxTemp = s.Value.Value; found = true; }
-                    }
-                }
-                if (found) result = maxTemp;
-                
-                if (result == null)
-                {
-                    lock (_lock) { if (_sensorMap.TryGetSensor("CPU.Temp", out var s) && s.Value.HasValue) result = s.Value.Value; }
-                }
-                if (result == null) result = 0f;
-            }
-            // 3. 网络与磁盘 (Manager 内部已有一定缓存机制，但这里加一层更稳)
-            else if (key.StartsWith("NET"))
-            {
-                result = _networkManager.GetBestValue(key, _computer, _cfg, _lastValidMap, _lock);
-            }
-            else if (key.StartsWith("DISK"))
-            {
-                result = _diskManager.GetBestValue(key, _computer, _cfg, _lastValidMap, _lock);
-            }
-            // 4. 每日流量
-            else if (key == "DATA.DayUp")
-            {
-                result = TrafficLogger.GetTodayStats().up;
-            }
-            else if (key == "DATA.DayDown")
-            {
-                result = TrafficLogger.GetTodayStats().down;
-            }
-            // 5. 频率与功耗
-            else if (key.Contains("Clock") || key.Contains("Power"))
-            {
-                result = GetCompositeValue(key);
-            }
-            // 6. 内存
-            else if (key == "MEM.Load")
-            {
-                // 检测总内存逻辑
-                if (Settings.DetectedRamTotalGB <= 0)
-                {
-                    lock (_lock)
-                    {
-                        if (_sensorMap.TryGetSensor("MEM.Used", out var u) && _sensorMap.TryGetSensor("MEM.Available", out var a))
-                        {
-                            if (u.Value.HasValue && a.Value.HasValue)
-                            {
-                                float rawTotal = u.Value.Value + a.Value.Value;
-                                Settings.DetectedRamTotalGB = rawTotal > 512.0f ? rawTotal / 1024.0f : rawTotal;
-                            }
-                        }
-                    }
-                }
-                // 下面会走到通用传感器逻辑去取值
-            }
-            // 7. 显存
-            else if (key == "GPU.VRAM")
-            {
-                // 注意：这里递归调用了 GetValue，会用到缓存，非常高效
-                float? used = GetValue("GPU.VRAM.Used");
-                float? total = GetValue("GPU.VRAM.Total");
-                if (used.HasValue && total.HasValue && total > 0)
-                {
-                    if (Settings.DetectedGpuVramTotalGB <= 0) Settings.DetectedGpuVramTotalGB = total.Value / 1024f;
-                    // 单位转换
-                    if (total > 10485760) { used /= 1048576f; total /= 1048576f; }
-                    result = used / total * 100f;
-                }
-                else
-                {
-                    lock (_lock) { if (_sensorMap.TryGetSensor("GPU.VRAM.Load", out var s) && s.Value.HasValue) result = s.Value; }
-                }
-            }
-            // 8. 风扇/泵/主板温度 (带 Max 记录)
-            // ★★★ 终极优化：缓存优先 -> 急速反向查找 ★★★
-            else if (key == "CPU.Fan" || key == "CPU.Pump" || key == "CASE.Fan" || key == "GPU.Fan")
-            {
-                string pref = "";
-                if (key == "CPU.Fan") pref = _cfg.PreferredCpuFan;
-                else if (key == "CPU.Pump") pref = _cfg.PreferredCpuPump;
-                else if (key == "CASE.Fan") pref = _cfg.PreferredCaseFan;
-                
-                // --- 阶段1：查缓存 (速度最快，0 Alloc) ---
-                bool foundInCache = false;
-                if (_manualSensorCache.TryGetValue(key, out var cached))
-                {
-                    // 只有当配置字符串没变时，缓存才有效
-                    if (cached.ConfigSource == pref)
-                    {
-                        result = cached.Sensor.Value;
-                        foundInCache = true;
-                    }
-                }
+                    break;
 
-                // --- 阶段2：缓存失效，执行急速反向查找 ---
-                if (!foundInCache)
-                {
-                    ISensor? s = FindSensorReverse(pref, SensorType.Fan);
-                    if (s != null)
+                case "CPU.Temp":
+                    float maxTemp = -1000f;
+                    bool found = false;
+                    var cpuT = _computer.Hardware.FirstOrDefault(h => h.HardwareType == HardwareType.Cpu);
+                    if (cpuT != null)
                     {
-                        // 找到了！更新缓存
-                        _manualSensorCache[key] = (s, pref);
-                        result = s.Value;
+                        foreach (var s in cpuT.Sensors)
+                        {
+                            if (s.SensorType != SensorType.Temperature) continue;
+                            if (!s.Value.HasValue || s.Value.Value <= 0) continue;
+                            if (SensorMap.Has(s.Name, "Distance") || SensorMap.Has(s.Name, "Average") || SensorMap.Has(s.Name, "Max")) continue;
+                            if (s.Value.Value > maxTemp) { maxTemp = s.Value.Value; found = true; }
+                        }
                     }
-                    else 
+                    if (found) result = maxTemp;
+                    if (result == null) lock (_lock) { if (_sensorMap.TryGetSensor("CPU.Temp", out var s) && s.Value.HasValue) result = s.Value.Value; }
+                    if (result == null) result = 0f;
+                    break;
+
+                // --- 每日流量 ---
+                case "DATA.DayUp":
+                    result = TrafficLogger.GetTodayStats().up;
+                    break;
+                case "DATA.DayDown":
+                    result = TrafficLogger.GetTodayStats().down;
+                    break;
+
+                // --- 内存 ---
+                case "MEM.Load":
+                    if (Settings.DetectedRamTotalGB <= 0)
                     {
-                        // 没找到 (或Auto)，走自动逻辑
                         lock (_lock)
                         {
-                            if (_sensorMap.TryGetSensor(key, out var autoS) && autoS.Value.HasValue)
-                                result = autoS.Value.Value;
+                            if (_sensorMap.TryGetSensor("MEM.Used", out var u) && _sensorMap.TryGetSensor("MEM.Available", out var a))
+                            {
+                                if (u.Value.HasValue && a.Value.HasValue)
+                                {
+                                    float rawTotal = u.Value.Value + a.Value.Value;
+                                    Settings.DetectedRamTotalGB = rawTotal > 512.0f ? rawTotal / 1024.0f : rawTotal;
+                                }
+                            }
                         }
                     }
-                }
-                
-                // 3. 记录最大值
-                if (result.HasValue) _cfg.UpdateMaxRecord(key, result.Value);
-            }
-            // [插入/修改逻辑]
-            // ★★★ 优化：主板温度也统一使用缓存+急速查找 ★★★
-            else if (key == "MOBO.Temp")
-            {
-                string pref = _cfg.PreferredMoboTemp;
-                bool foundInCache = false;
-                
-                // 1. 查缓存
-                if (_manualSensorCache.TryGetValue(key, out var cached))
-                {
-                    if (cached.ConfigSource == pref)
-                    {
-                        result = cached.Sensor.Value;
-                        foundInCache = true;
-                    }
-                }
+                    // 注意：这里 break 后会走到下方的“通用兜底”，因为 MEM.Load 也是个传感器 Key
+                    break;
 
-                // 2. 查找并更新
-                if (!foundInCache)
-                {
-                    ISensor? s = FindSensorReverse(pref, SensorType.Temperature);
-                    if (s != null)
+                // --- 显存 ---
+                case "GPU.VRAM":
+                    float? used = GetValue("GPU.VRAM.Used");
+                    float? total = GetValue("GPU.VRAM.Total");
+                    if (used.HasValue && total.HasValue && total > 0)
                     {
-                        _manualSensorCache[key] = (s, pref);
-                        result = s.Value;
+                        if (Settings.DetectedGpuVramTotalGB <= 0) Settings.DetectedGpuVramTotalGB = total.Value / 1024f;
+                        if (total > 10485760) { used /= 1048576f; total /= 1048576f; }
+                        result = used / total * 100f;
                     }
-                    // 没找到则走下方通用兜底
-                }
+                    else
+                    {
+                        lock (_lock) { if (_sensorMap.TryGetSensor("GPU.VRAM.Load", out var s) && s.Value.HasValue) result = s.Value; }
+                    }
+                    break;
+
+                // --- 风扇与泵 (手动指定 + 缓存加速) ---
+                case "CPU.Fan":
+                case "CPU.Pump":
+                case "CASE.Fan":
+                case "GPU.Fan":
+                    string prefFan = "";
+                    if (key == "CPU.Fan") prefFan = _cfg.PreferredCpuFan;
+                    else if (key == "CPU.Pump") prefFan = _cfg.PreferredCpuPump;
+                    else if (key == "CASE.Fan") prefFan = _cfg.PreferredCaseFan;
+
+                    // 1. 查对象缓存 (O(1) 访问)
+                    bool foundFan = false;
+                    if (_manualSensorCache.TryGetValue(key, out var cachedFan))
+                    {
+                        if (cachedFan.ConfigSource == prefFan) // 校验配置未变
+                        {
+                            result = cachedFan.Sensor.Value;
+                            foundFan = true;
+                        }
+                    }
+
+                    // 2. 缓存失效，执行急速反向查找
+                    if (!foundFan)
+                    {
+                        ISensor? s = FindSensorReverse(prefFan, SensorType.Fan);
+                        if (s != null)
+                        {
+                            _manualSensorCache[key] = (s, prefFan); // 更新缓存
+                            result = s.Value;
+                        }
+                        else 
+                        {
+                            // 没找到，走自动
+                            lock (_lock)
+                            {
+                                if (_sensorMap.TryGetSensor(key, out var autoS) && autoS.Value.HasValue)
+                                    result = autoS.Value.Value;
+                            }
+                        }
+                    }
+                    if (result.HasValue) _cfg.UpdateMaxRecord(key, result.Value);
+                    break;
+
+                // --- 主板温度 (手动指定 + 缓存加速) ---
+                case "MOBO.Temp":
+                    string prefMobo = _cfg.PreferredMoboTemp;
+                    bool foundMobo = false;
+
+                    if (_manualSensorCache.TryGetValue(key, out var cachedMobo))
+                    {
+                        if (cachedMobo.ConfigSource == prefMobo)
+                        {
+                            result = cachedMobo.Sensor.Value;
+                            foundMobo = true;
+                        }
+                    }
+
+                    if (!foundMobo)
+                    {
+                        ISensor? s = FindSensorReverse(prefMobo, SensorType.Temperature);
+                        if (s != null)
+                        {
+                            _manualSensorCache[key] = (s, prefMobo);
+                            result = s.Value;
+                        }
+                    }
+                    break;
+
+                // --- 默认处理 (模糊匹配) ---
+                default:
+                    if (key.StartsWith("NET"))
+                    {
+                        result = _networkManager.GetBestValue(key, _computer, _cfg, _lastValidMap, _lock);
+                    }
+                    else if (key.StartsWith("DISK"))
+                    {
+                        result = _diskManager.GetBestValue(key, _computer, _cfg, _lastValidMap, _lock);
+                    }
+                    else if (key.Contains("Clock") || key.Contains("Power"))
+                    {
+                        result = GetCompositeValue(key);
+                    }
+                    break;
             }
 
-            // 10. 通用传感器查找 (兜底)
+            // 10. 通用传感器查找 (兜底机制 - 如果上面的 case 都没有赋值 result)
             if (result == null)
             {
                 lock (_lock)
@@ -339,7 +320,7 @@ namespace LiteMonitor.src.SystemServices
                 }
             }
 
-            // ★★★ [新增 4] 写入缓存并返回 ★★★
+            // 写入帧缓存并返回 
             if (result.HasValue)
             {
                 _tickCache[key] = result.Value;
@@ -350,8 +331,8 @@ namespace LiteMonitor.src.SystemServices
         }
 
         // =====================================================================
-        // ★★★ [核心重构] 急速反向查找逻辑 (Reverse Lookup) ★★★
-        // 逻辑：直接定位父级 -> 在父级分支里找传感器 -> 返回 ISensor 对象
+        // ★★★ [急速反向查找] 解析父级名 -> 定位根硬件 -> 查找分支 ★★★
+        // 只在配置改变或启动时运行一次，随后进入缓存
         // =====================================================================
         private ISensor? FindSensorReverse(string savedString, SensorType type)
         {
@@ -363,6 +344,7 @@ namespace LiteMonitor.src.SystemServices
             int idx = savedString.LastIndexOf('[');
             if (idx < 0) return null; // 格式非法
 
+            // 预处理字符串
             string targetSensorName = savedString.Substring(0, idx).Trim();
             string targetHardwareName = savedString.Substring(idx + 1).TrimEnd(']');
 
@@ -382,8 +364,8 @@ namespace LiteMonitor.src.SystemServices
                     if (s != null) return s;
                 }
                 return null;
-            }
-
+             }            
+             
             // 3. ★★★ 极速定位：只遍历根节点 ★★★
             foreach (var hw in _computer.Hardware)
             {
@@ -401,11 +383,8 @@ namespace LiteMonitor.src.SystemServices
         // ===========================================================
         // ========= [核心算法] CPU/GPU 频率功耗复合计算 ==============
         // ===========================================================
-        // ... (GetCompositeValue 方法保持不变) ...
         private float? GetCompositeValue(string key)
         {
-            // 代码无需修改，上面的逻辑已经通过 GetValue 调用到了这里
-            // 这里为了节省篇幅省略，请保留你原有的 GetCompositeValue 代码
             if (key == "CPU.Clock")
             {
                 if (_sensorMap.CpuCoreCache.Count == 0) return null;

@@ -198,7 +198,7 @@ namespace LiteMonitor.src.SystemServices
                     _diskManager.ClearCache();
                     _sensorMap.Clear();
                     
-                    // ★★★ 新增：清理 Provider 的对象缓存，防止持有死对象 ★★★
+                    // ★★★ 新增：清理 Provider 对象缓存，防止持有死对象 ★★★
                     _valueProvider.ClearCache();
 
                     // ★★★ 新增：清理 UI 列表缓存 ★★★
@@ -319,7 +319,8 @@ namespace LiteMonitor.src.SystemServices
             
             // 修复：只有搜到硬件才存入缓存，防止启动时的空列表被永久缓存
             if (list.Count > 0) Instance._cachedNetworkList = list;
-            return list;
+            // ★★★ 修复：缓存生成 -> 必须返回副本！否则 UI 会污染缓存 ★★★
+            return list.ToList();
         }
 
         // ★★★ 优化：使用缓存 + Intern，防止生成重复字符串 ★★★
@@ -337,14 +338,15 @@ namespace LiteMonitor.src.SystemServices
                 .ToList();
 
             if (list.Count > 0) Instance._cachedDiskList = list;
-            return list;
+            // ★★★ 修复：返回副本 ★★★
+            return list.ToList();
         }
         
        // 列出所有风扇 (黑名单机制：排除干扰项，允许 USB/Cooler)
         public static List<string> ListAllFans()
         {
             if (Instance == null) return new List<string>();
-            // ★★★ 修复：返回副本 (解决多个 Auto 问题) ★★★
+            // 修复：返回副本
             if (Instance._cachedFanList != null && Instance._cachedFanList.Count > 0) 
                 return Instance._cachedFanList.ToList(); 
             
@@ -395,7 +397,10 @@ namespace LiteMonitor.src.SystemServices
             var final = list.Distinct().ToList();
             // 存入缓存
             if (final.Count > 0) Instance._cachedFanList = final;
-            return final;
+            
+            // ★★★ 核心修复点：必须返回 final.ToList() ★★★
+            // 之前这里直接返回 final，导致 UI 层插入 "Auto" 时直接修改了缓存对象，引发"多个自动"Bug
+            return final.ToList();
         }
 
         // 列出所有适合作为"主板/系统温度"的传感器
@@ -439,7 +444,9 @@ namespace LiteMonitor.src.SystemServices
             list.Sort();
             var final = list.Distinct().ToList();
             if (final.Count > 0) Instance._cachedMoboTempList = final;
-            return final;
+            
+            // ★★★ 修复：返回副本 ★★★
+            return final.ToList();
         }
 
         private static IEnumerable<ISensor> GetAllSensors(IHardware hw, SensorType type)
