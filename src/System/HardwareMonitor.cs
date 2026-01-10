@@ -198,6 +198,9 @@ namespace LiteMonitor.src.SystemServices
                     _diskManager.ClearCache();
                     _sensorMap.Clear();
                     
+                    // ★★★ 新增：清理 Provider 的对象缓存，防止持有死对象 ★★★
+                    _valueProvider.ClearCache();
+
                     // ★★★ 新增：清理 UI 列表缓存 ★★★
                     _cachedFanList = null;
                     _cachedNetworkList = null;
@@ -284,6 +287,22 @@ namespace LiteMonitor.src.SystemServices
             _diskManager.ClearCache(); // 漏掉的，补上
         }
         
+        // ========================================================================
+        // ★★★ 新增：智能命名方法 (把 SuperIO 芯片名替换为主板名) ★★★
+        // ========================================================================
+        public static string GenerateSmartName(ISensor sensor, IHardware hardware)
+        {
+            string hwName = hardware.Name;
+            // 如果是 SuperIO (如 ITE IT8688E)，尝试偷梁换柱用主板名
+            if (hardware.HardwareType == HardwareType.SuperIO)
+            {
+                var mobo = Instance?._computer.Hardware.FirstOrDefault(h => h.HardwareType == HardwareType.Motherboard);
+                if (mobo != null) hwName = mobo.Name;
+            }
+            // 返回标准格式：Fan #1 [ASUS Z790-P]
+            return $"{sensor.Name} [{hwName}]";
+        }
+
         // ★★★ 优化：使用缓存 + Intern，防止生成重复字符串 ★★★
         public static List<string> ListAllNetworks() 
         {
@@ -325,7 +344,7 @@ namespace LiteMonitor.src.SystemServices
         public static List<string> ListAllFans()
         {
             if (Instance == null) return new List<string>();
-            // 修复：返回副本
+            // ★★★ 修复：返回副本 (解决多个 Auto 问题) ★★★
             if (Instance._cachedFanList != null && Instance._cachedFanList.Count > 0) 
                 return Instance._cachedFanList.ToList(); 
             
@@ -352,9 +371,8 @@ namespace LiteMonitor.src.SystemServices
                         // 只列出 Fan 类型 (转速)
                         if (s.SensorType == SensorType.Fan)
                         {
-                            // 格式化名称：传感器名[硬件名]  "Fan #1 [SuperIO]" 
-                            string fullName = $"{s.Name} [{hw.Name}]";
-                            list.Add(fullName);
+                            // ★★★ 修复：调用统一的 SmartName 方法 ★★★
+                            list.Add(GenerateSmartName(s, hw));
                         }
                     }
                 }
@@ -407,9 +425,8 @@ namespace LiteMonitor.src.SystemServices
                     {
                         if (s.SensorType == SensorType.Temperature)
                         {
-                            // 格式：传感器名 [硬件名]
-                            string fullName = $"{s.Name} [{hw.Name}]";
-                            list.Add(fullName);
+                            // ★★★ 修复：调用统一的 SmartName 方法 ★★★
+                            list.Add(GenerateSmartName(s, hw));
                         }
                     }
                 }

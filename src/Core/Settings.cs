@@ -360,8 +360,8 @@ namespace LiteMonitor
                 new MonitorItemConfig { Key = "GPU.VRAM",  SortIndex = 15, VisibleInPanel = true },
 
                 new MonitorItemConfig { Key = "MEM.Load",  SortIndex = 20, VisibleInPanel = true, VisibleInTaskbar = true },
-                new MonitorItemConfig { Key = "DISK.Temp", SortIndex = 21, VisibleInPanel = false },
-                new MonitorItemConfig { Key = "MOBO.Temp", SortIndex = 22, VisibleInPanel = false },
+                new MonitorItemConfig { Key = "MOBO.Temp", SortIndex = 21, VisibleInPanel = false },
+                new MonitorItemConfig { Key = "DISK.Temp", SortIndex = 22, VisibleInPanel = false },
                 new MonitorItemConfig { Key = "CASE.Fan",  SortIndex = 23, VisibleInPanel = false },
 
                 new MonitorItemConfig { Key = "DISK.Read", SortIndex = 30, VisibleInPanel = true },

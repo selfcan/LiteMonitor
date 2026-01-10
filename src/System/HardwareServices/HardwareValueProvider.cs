@@ -29,6 +29,10 @@ namespace LiteMonitor.src.SystemServices
         // ★★★ [新增] Tick 级智能缓存 (防止同帧重复计算) ★★★
         private readonly Dictionary<string, float> _tickCache = new();
 
+        // ★★★ [终极优化] 对象级缓存：(Sensor对象, 配置来源字符串) ★★★
+        // 缓存住找到的 ISensor 对象，彻底消除每秒的字符串解析和遍历开销
+        private readonly Dictionary<string, (ISensor Sensor, string ConfigSource)> _manualSensorCache = new();
+
         public HardwareValueProvider(Computer c, Settings s, SensorMap map, NetworkManager net, DiskManager disk, object syncLock, Dictionary<string, float> lastValid)
         {
             _computer = c;
@@ -38,6 +42,13 @@ namespace LiteMonitor.src.SystemServices
             _diskManager = disk;
             _lock = syncLock;
             _lastValidMap = lastValid;
+        }
+
+        // ★★★ [新增] 清空缓存（当硬件重启时必须调用，否则持有死对象） ★★★
+        public void ClearCache()
+        {
+            _manualSensorCache.Clear();
+            _tickCache.Clear();
         }
 
         public void UpdateSystemCpuCounter()
@@ -233,53 +244,77 @@ namespace LiteMonitor.src.SystemServices
                 }
             }
             // 8. 风扇/泵/主板温度 (带 Max 记录)
+            // ★★★ 终极优化：缓存优先 -> 急速反向查找 ★★★
             else if (key == "CPU.Fan" || key == "CPU.Pump" || key == "CASE.Fan" || key == "GPU.Fan")
             {
-                lock (_lock)
+                string pref = "";
+                if (key == "CPU.Fan") pref = _cfg.PreferredCpuFan;
+                else if (key == "CPU.Pump") pref = _cfg.PreferredCpuPump;
+                else if (key == "CASE.Fan") pref = _cfg.PreferredCaseFan;
+                
+                // --- 阶段1：查缓存 (速度最快，0 Alloc) ---
+                bool foundInCache = false;
+                if (_manualSensorCache.TryGetValue(key, out var cached))
                 {
-                    if (_sensorMap.TryGetSensor(key, out var s) && s.Value.HasValue)
+                    // 只有当配置字符串没变时，缓存才有效
+                    if (cached.ConfigSource == pref)
                     {
-                        float val = s.Value.Value;
-                        _cfg.UpdateMaxRecord(key, val);
-                        result = val;
+                        result = cached.Sensor.Value;
+                        foundInCache = true;
                     }
                 }
+
+                // --- 阶段2：缓存失效，执行急速反向查找 ---
+                if (!foundInCache)
+                {
+                    ISensor? s = FindSensorReverse(pref, SensorType.Fan);
+                    if (s != null)
+                    {
+                        // 找到了！更新缓存
+                        _manualSensorCache[key] = (s, pref);
+                        result = s.Value;
+                    }
+                    else 
+                    {
+                        // 没找到 (或Auto)，走自动逻辑
+                        lock (_lock)
+                        {
+                            if (_sensorMap.TryGetSensor(key, out var autoS) && autoS.Value.HasValue)
+                                result = autoS.Value.Value;
+                        }
+                    }
+                }
+                
+                // 3. 记录最大值
+                if (result.HasValue) _cfg.UpdateMaxRecord(key, result.Value);
             }
             // [插入/修改逻辑]
-            else if (key == "MOBO.Temp" && !string.IsNullOrEmpty(_cfg.PreferredMoboTemp))
+            // ★★★ 优化：主板温度也统一使用缓存+急速查找 ★★★
+            else if (key == "MOBO.Temp")
             {
-                string pref = _cfg.PreferredMoboTemp; // 格式: "温度 1 [ITE IT8686E]"
-                int idx = pref.LastIndexOf('[');
-                if (idx > 0)
+                string pref = _cfg.PreferredMoboTemp;
+                bool foundInCache = false;
+                
+                // 1. 查缓存
+                if (_manualSensorCache.TryGetValue(key, out var cached))
                 {
-                    string targetSensor = pref.Substring(0, idx).Trim();
-                    string targetHw = pref.Substring(idx + 1).TrimEnd(']');
-
-                    // 局部递归查找指定硬件的指定传感器
-                    float? FindSpecific(IHardware h)
+                    if (cached.ConfigSource == pref)
                     {
-                        if (h.Name == targetHw)
-                        {
-                            foreach (var s in h.Sensors)
-                            {
-                                if (s.SensorType == SensorType.Temperature && s.Name == targetSensor)
-                                    return s.Value;
-                            }
-                        }
-                        foreach (var sub in h.SubHardware)
-                        {
-                            var v = FindSpecific(sub);
-                            if (v.HasValue) return v;
-                        }
-                        return null;
+                        result = cached.Sensor.Value;
+                        foundInCache = true;
                     }
+                }
 
-                    // 遍历所有硬件寻找匹配项
-                    foreach (var hw in _computer.Hardware)
+                // 2. 查找并更新
+                if (!foundInCache)
+                {
+                    ISensor? s = FindSensorReverse(pref, SensorType.Temperature);
+                    if (s != null)
                     {
-                        result = FindSpecific(hw);
-                        if (result.HasValue) break;
+                        _manualSensorCache[key] = (s, pref);
+                        result = s.Value;
                     }
+                    // 没找到则走下方通用兜底
                 }
             }
 
@@ -309,6 +344,55 @@ namespace LiteMonitor.src.SystemServices
             {
                 _tickCache[key] = result.Value;
                 return result.Value;
+            }
+
+            return null;
+        }
+
+        // =====================================================================
+        // ★★★ [核心重构] 急速反向查找逻辑 (Reverse Lookup) ★★★
+        // 逻辑：直接定位父级 -> 在父级分支里找传感器 -> 返回 ISensor 对象
+        // =====================================================================
+        private ISensor? FindSensorReverse(string savedString, SensorType type)
+        {
+            // 0. 快速校验
+            if (string.IsNullOrEmpty(savedString) || savedString.Contains("Auto") || savedString.Contains("自动")) 
+                return null;
+
+            // 1. 解析字符串 (格式: "Fan #1 [ASUS Z790]")
+            int idx = savedString.LastIndexOf('[');
+            if (idx < 0) return null; // 格式非法
+
+            string targetSensorName = savedString.Substring(0, idx).Trim();
+            string targetHardwareName = savedString.Substring(idx + 1).TrimEnd(']');
+
+            // 2. 局部递归查找函数
+            ISensor? SearchBranch(IHardware h)
+            {
+                // 先找当前硬件的传感器
+                foreach (var s in h.Sensors)
+                {
+                    if (s.SensorType == type && s.Name == targetSensorName)
+                        return s; // 返回对象
+                }
+                // 再找子硬件 (比如 SuperIO)
+                foreach (var sub in h.SubHardware)
+                {
+                    var s = SearchBranch(sub);
+                    if (s != null) return s;
+                }
+                return null;
+            }
+
+            // 3. ★★★ 极速定位：只遍历根节点 ★★★
+            foreach (var hw in _computer.Hardware)
+            {
+                // 直接比对父级名称，秒过滤
+                if (hw.Name == targetHardwareName)
+                {
+                    // 锁定父级后，只搜索这个分支
+                    return SearchBranch(hw);
+                }
             }
 
             return null;
