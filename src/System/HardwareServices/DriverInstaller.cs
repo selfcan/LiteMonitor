@@ -1,12 +1,14 @@
 using Microsoft.Win32;
+using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
+using System.Net.Security; // 引用 SslClientAuthenticationOptions
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using LibreHardwareMonitor.Hardware;
-using System.Net.Security;
 using LiteMonitor.src.Core;
 using Debug = System.Diagnostics.Debug;
 
@@ -39,7 +41,6 @@ namespace LiteMonitor.src.SystemServices
         {
             if (!_cfg.IsAnyEnabled("CPU")) return;
 
-            // 检查逻辑不变...
             bool isDriverInstalled = IsPawnIOInstalled();
             var cpu = _computer.Hardware.FirstOrDefault(h => h.HardwareType == HardwareType.Cpu);
             bool isCpuValid = cpu != null && cpu.Sensors.Length > 0;
@@ -53,7 +54,6 @@ namespace LiteMonitor.src.SystemServices
                     
                     if (installed)
                     {
-                        // ★★★ 核心修改：安装成功后，热重载并重新映射 ★★★
                         Debug.WriteLine("[Driver] Installed. Reloading...");
                         _onReloadRequired?.Invoke();
                     }
@@ -76,100 +76,108 @@ namespace LiteMonitor.src.SystemServices
         }
 
         /// <summary>
-        /// 极速切换的下载逻辑
+        /// 极速切换的下载逻辑 (优化版：随机文件名 + 强制清理 + SSL修复)
         /// </summary>
         private async Task<bool> SilentDownloadAndInstall()
         {
-            string tempPath = Path.Combine(Path.GetTempPath(), "LiteMonitor_Driver.exe");
+            // 使用 GUID 生成随机文件名，彻底解决“文件被占用”或“覆盖失败”的问题
+            string tempFileName = $"PawnIO_{Guid.NewGuid()}.exe";
+            string tempPath = Path.Combine(Path.GetTempPath(), tempFileName);
+            
             bool downloadSuccess = false;
 
-            // ★★★ [修复] 配置 HttpClient 忽略 SSL 错误 ★★★
-            // 使用 SocketsHttpHandler 来控制 SSL 选项
-            using (var handler = new SocketsHttpHandler
+            try 
             {
-                SslOptions = new SslClientAuthenticationOptions
+                // 使用 SocketsHttpHandler 来控制 SSL 选项，忽略证书错误
+                using (var handler = new SocketsHttpHandler
                 {
-                    // 强制信任所有证书，防止用户环境报错
-                    RemoteCertificateValidationCallback = (sender, cert, chain, sslPolicyErrors) => true
-                }
-            })
-            using (var client = new HttpClient(handler))
-            {
-                // 不要在这里设置 client.Timeout，我们对每个请求单独控制
-                client.DefaultRequestHeaders.Add("User-Agent", "LiteMonitor-AutoUpdater");
-
-                foreach (var url in _driverUrls)
-                {
-                    if (string.IsNullOrWhiteSpace(url)) continue;
-
-                    try
+                    SslOptions = new SslClientAuthenticationOptions
                     {
-                        Debug.WriteLine($"[Driver] Trying: {url}");
+                        RemoteCertificateValidationCallback = (sender, cert, chain, sslPolicyErrors) => true
+                    }
+                })
+                using (var client = new HttpClient(handler))
+                {
+                    client.DefaultRequestHeaders.Add("User-Agent", "LiteMonitor-AutoUpdater");
 
-                        // ★★★ 改进点：使用 CancellationToken 设置 10秒 超时 ★★★
-                        using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10)))
+                    foreach (var url in _driverUrls)
+                    {
+                        if (string.IsNullOrWhiteSpace(url)) continue;
+
+                        try
                         {
-                            // 使用 GetAsync 而不是 GetByteArrayAsync，以便传入 Token
-                            var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cts.Token);
-                            
-                            if (response.IsSuccessStatusCode)
-                            {
-                                var data = await response.Content.ReadAsByteArrayAsync(cts.Token); // 读取内容也受超时控制
-                                await File.WriteAllBytesAsync(tempPath, data, cts.Token);
+                            Debug.WriteLine($"[Driver] Trying: {url}");
 
-                                if (new FileInfo(tempPath).Length > 1024)
+                            // 设置 15秒 超时
+                            using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15)))
+                            {
+                                var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cts.Token);
+                                
+                                if (response.IsSuccessStatusCode)
                                 {
-                                    downloadSuccess = true;
-                                    Debug.WriteLine("[Driver] Download success.");
-                                    break; // 成功，跳出循环
+                                    var data = await response.Content.ReadAsByteArrayAsync(cts.Token);
+                                    
+                                    // 写入文件
+                                    await File.WriteAllBytesAsync(tempPath, data, cts.Token);
+
+                                    if (new FileInfo(tempPath).Length > 1024)
+                                    {
+                                        downloadSuccess = true;
+                                        Debug.WriteLine("[Driver] Download success.");
+                                        break; 
+                                    }
                                 }
                             }
                         }
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        Debug.WriteLine($"[Driver] Timeout (Slow network): {url}");
-                        // 超时会自动捕获到这里，循环继续，尝试下一个 URL
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine($"[Driver] Error: {url} -> {ex.Message}");
+                        catch (Exception ex)
+                        {
+                            Debug.WriteLine($"[Driver] Error: {url} -> {ex.Message}");
+                        }
                     }
                 }
-            }
 
-            if (!downloadSuccess)
-            {
-                ShowManualFailDialog("下载超时或连接失败，请检查网络。");
+                if (!downloadSuccess)
+                {
+                    ShowManualFailDialog("下载超时或连接失败，请检查网络。");
+                    return false;
+                }
+
+                // ================================================================
+                // 安装逻辑
+                // ================================================================
+                try
+                {
+                    var psi = new ProcessStartInfo
+                    {
+                        FileName = tempPath,
+                        Arguments = "-install -silent",
+                        UseShellExecute = true,
+                        Verb = "runas",
+                        WindowStyle = ProcessWindowStyle.Hidden
+                    };
+
+                    var proc = Process.Start(psi);
+                    if (proc != null)
+                    {
+                        // 等待安装程序结束
+                        await proc.WaitForExitAsync();
+                        return proc.ExitCode == 0;
+                    }
+                }
+                catch { } // UAC 取消
+                
+                ShowManualFailDialog("自动安装被取消或拦截。");
                 return false;
             }
-
-            // ================================================================
-            // 安装逻辑 (保持不变)
-            // ================================================================
-            try
+            finally
             {
-                var psi = new ProcessStartInfo
-                {
-                    FileName = tempPath,
-                    Arguments = "-install -silent",
-                    UseShellExecute = true,
-                    Verb = "runas",
-                    WindowStyle = ProcessWindowStyle.Hidden
-                };
-
-                var proc = Process.Start(psi);
-                if (proc != null)
-                {
-                    await proc.WaitForExitAsync();
-                    try { File.Delete(tempPath); } catch { }
-                    return proc.ExitCode == 0;
-                }
+                // 无论成功还是失败，最后都尝试删除这个临时文件
+                try 
+                { 
+                    if (File.Exists(tempPath)) File.Delete(tempPath); 
+                } 
+                catch { /* 忽略删除失败 */ }
             }
-            catch { } // UAC 取消
-
-            ShowManualFailDialog("自动安装被取消或拦截。");
-            return false;
         }
 
         private void ShowManualFailDialog(string reason)

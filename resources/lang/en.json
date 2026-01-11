@@ -166,8 +166,8 @@
     "DiskSource": "Disk",
     "NetworkSource": "Network",
     "Auto": "Auto",
-    "UseSystemCpuLoad": "Use Sys CPU%",
-    "UseSystemCpuLoadTip": "⚠️Task Manager algorithm. Effect after ~10s",
+    "UseWinPerCounters": "Use Sys Counters",
+    "UseWinPerCountersTip": "⚠️Disable if inaccurate. CPU/GPU/MEM/DISK read from sensors.",
     "Refresh": "Rate"
   }
 }

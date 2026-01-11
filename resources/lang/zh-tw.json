@@ -166,8 +166,8 @@
     "DiskSource": "首選磁碟",
     "NetworkSource": "首選網卡",
     "Auto": "自動模式",
-    "UseSystemCpuLoad": "使用系統CPU負載演算法",
-    "UseSystemCpuLoadTip": "⚠️系統CPU負載演算法：如CPU使用率不準時可開啟，開啟後採用工作管理員演算法，生效需要10秒左右",
+    "UseWinPerCounters": "優先使用系統計數器",
+    "UseWinPerCountersTip": "⚠️如數據不準可關閉系統計數器，關閉後，CPU使用率、CPU頻率、記憶體占用、磁碟讀取將直讀硬體感測器",
     "Refresh": "重新整理頻率"
   }
 }

@@ -167,8 +167,8 @@
     "DiskSource": "ディスク",
     "NetworkSource": "ネットワーク",
     "Auto": "自動",
-    "UseSystemCpuLoad": "システムCPU計測を使用",
-    "UseSystemCpuLoadTip": "⚠️CPU使用率が不正確な場合に有効。タスクマネージャー方式。効果は約10秒後",
+    "UseWinPerCounters": "システムカウンター優先",
+    "UseWinPerCountersTip": "⚠️不正確な場合は無効にしてください。CPU/GPU/RAM/ディスクはセンサーから直接読み取られます。",
     "Refresh": "更新頻度"
   }
 }

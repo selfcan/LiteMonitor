@@ -166,8 +166,8 @@
     "DiskSource": "디스크",
     "NetworkSource": "네트워크",
     "Auto": "자동",
-    "UseSystemCpuLoad": "시스템 CPU 계산 사용",
-    "UseSystemCpuLoadTip": "⚠️CPU 사용률 부정확시 사용. 작업 관리자 방식. 효과 약 10초 후",
+    "UseWinPerCounters": "시스템 카운터 우선",
+    "UseWinPerCountersTip": "⚠️부정확시 끄세요. CPU/GPU/RAM/디스크는 센서에서 직접 읽습니다.",
     "Refresh": "갱신 주기"
   }
 }

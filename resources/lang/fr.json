@@ -167,8 +167,8 @@
     "DiskSource": "Disque",
     "NetworkSource": "Réseau",
     "Auto": "Auto",
-    "UseSystemCpuLoad": "Utiliser CPU Sys",
-    "UseSystemCpuLoadTip": "⚠️Algorithme Gestionnaire. Effet ~10s",
+    "UseWinPerCounters": "Compteurs Système",
+    "UseWinPerCountersTip": "⚠️Désactiver si inexact. CPU/GPU/RAM/DISK lues depuis capteurs.",
     "Refresh": "Taux"
   }
 }

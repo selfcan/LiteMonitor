@@ -166,8 +166,8 @@
     "DiskSource": "Disco",
     "NetworkSource": "Red",
     "Auto": "Auto",
-    "UseSystemCpuLoad": "Usar CPU Sys",
-    "UseSystemCpuLoadTip": "⚠️Algoritmo Administrador. Efecto ~10s",
+    "UseWinPerCounters": "Contadores Sistema",
+    "UseWinPerCountersTip": "⚠️Desactiva si no es exacto. CPU/GPU/RAM/DISCO leídos desde sensores.",
     "Refresh": "Tasa"
   }
 }
