@@ -485,7 +485,7 @@ namespace LiteMonitor.src.SystemServices
         /// <summary>
         /// 清理 PresentMon 僵尸进程和会话
         /// </summary>
-        private void ForceKillZombies()
+        public static void ForceKillZombies()
         {
             try
             {

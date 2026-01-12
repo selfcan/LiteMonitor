@@ -323,7 +323,8 @@ namespace LiteMonitor.src.Core
             if (key.IndexOf("CLOCK", StringComparison.OrdinalIgnoreCase) >= 0 || 
                 key.IndexOf("POWER", StringComparison.OrdinalIgnoreCase) >= 0 || 
                 key.IndexOf("FAN", StringComparison.OrdinalIgnoreCase) >= 0 || 
-                key.IndexOf("PUMP", StringComparison.OrdinalIgnoreCase) >= 0)
+                key.IndexOf("PUMP", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                key.IndexOf("FPS", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 value = GetAdaptivePercentage(key, value) * 100;
             }
@@ -448,7 +449,8 @@ namespace LiteMonitor.src.Core
             if (key.IndexOf("CLOCK", StringComparison.OrdinalIgnoreCase) >= 0 || 
                 key.IndexOf("POWER", StringComparison.OrdinalIgnoreCase) >= 0 || 
                 key.IndexOf("FAN", StringComparison.OrdinalIgnoreCase) >= 0 || 
-                key.IndexOf("PUMP", StringComparison.OrdinalIgnoreCase) >= 0)
+                key.IndexOf("PUMP", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                key.IndexOf("FPS", StringComparison.OrdinalIgnoreCase) >= 0) 
             {
                 return GetAdaptivePercentage(key, value);
             }
@@ -511,6 +513,7 @@ namespace LiteMonitor.src.Core
             else if (key == "CPU.Pump") max = cfg.RecordedMaxCpuPump;
             else if (key == "CASE.Fan") max = cfg.RecordedMaxChassisFan;
             else if (key == "GPU.Fan") max = cfg.RecordedMaxGpuFan;
+            else if (key == "FPS") max = cfg.RecordedMaxFps;
 
             if (max < 1) max = 1;
             double pct = val / max;

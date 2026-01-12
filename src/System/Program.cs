@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Threading; // 必须引用：用于 Mutex
 using System.Windows.Forms;
+using LiteMonitor.src.SystemServices;
 
 namespace LiteMonitor
 {
@@ -76,13 +77,30 @@ namespace LiteMonitor
             // =================================================================
             // ★★★ 3. 启动应用 ★★★
             // =================================================================
-            ApplicationConfiguration.Initialize();
-            Application.Run(new MainForm());
-
-            // 显式释放锁 (好习惯，虽然进程结束也会释放)
-            if (_mutex != null)
+            try
             {
-                _mutex.ReleaseMutex();
+                // ★★★ 3. 启动应用 ★★★
+                ApplicationConfiguration.Initialize();
+                Application.Run(new MainForm());
+            }
+            finally
+            {
+                // =================================================================
+                // ★★★ [新增] 退出时的终极清理 ★★★
+                // 无论程序是正常关闭、崩溃还是被强制结束(部分情况)，这里都会尝试执行
+                // 确保 FPS 进程被杀掉，且 ETW 会话被停止，防止系统卡顿
+                // =================================================================
+                try 
+                {
+                    FpsCounter.ForceKillZombies(); 
+                }
+                catch { }
+
+                // 显式释放锁
+                if (_mutex != null)
+                {
+                    _mutex.ReleaseMutex();
+                }
             }
         }
 

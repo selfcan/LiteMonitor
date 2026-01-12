@@ -90,6 +90,9 @@ namespace LiteMonitor
         public float RecordedMaxGpuPower { get; set; } = 100.0f;
         public float RecordedMaxGpuClock { get; set; } = 1800.0f;
         
+        // ★★★ [新增] FPS 固定最大值 (用于进度条上限，推荐 144) ★★★
+        public float RecordedMaxFps { get; set; } = 144.0f;
+
         // ★★★ [新增] 风扇最大值记录 ★★★
         public float RecordedMaxCpuFan { get; set; } = 4000;
         public float RecordedMaxCpuPump { get; set; } = 5000; // 水冷最大转速 (用于百分比计算)
