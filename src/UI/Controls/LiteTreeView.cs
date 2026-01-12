@@ -9,24 +9,28 @@ namespace LiteMonitor.src.UI.Controls
 {
     public class LiteTreeView : TreeView
     {
-        private static readonly Brush _selectBgBrush = new SolidBrush(Color.FromArgb(204, 232, 255)); // 选中背景颜色
-        private static readonly Brush _hoverBrush = new SolidBrush(Color.FromArgb(250, 250, 250)); // 悬停背景颜色
-        private static readonly Pen _linePen = new Pen(Color.FromArgb(240, 240, 240)); // 树线颜色
-        private static readonly Brush _chevronBrush = new SolidBrush(Color.Gray); //  Chevron 图标颜色
+        private static readonly Brush _selectBgBrush = new SolidBrush(Color.FromArgb(204, 232, 255)); 
+        private static readonly Brush _hoverBrush = new SolidBrush(Color.FromArgb(250, 250, 250)); 
+        private static readonly Pen _linePen = new Pen(Color.FromArgb(240, 240, 240)); 
+        private static readonly Brush _chevronBrush = new SolidBrush(Color.Gray); 
 
         private Font _baseFont;
         private Font _boldFont;
 
-        // --- 布局参数 ---
+        // 布局参数
         public int ColValueWidth { get; set; } = 70;  
         public int ColMaxWidth { get; set; } = 70;
-        // ★★★ 修正：右边距调小，让内容靠右 ★★★
         public int RightMargin { get; set; } = 6;    
         public int IconWidth { get; set; } = 20;      
 
         public LiteTreeView()
         {
-            this.SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint | ControlStyles.ResizeRedraw, true);
+            // ★★★ 修复1：移除 AllPaintingInWmPaint，防止黑屏 ★★★
+            // 只保留基本的双缓冲设置
+            this.SetStyle(
+                ControlStyles.OptimizedDoubleBuffer | 
+                ControlStyles.ResizeRedraw, true);
+
             this.DrawMode = TreeViewDrawMode.OwnerDrawText; 
             this.ShowLines = false;
             this.ShowPlusMinus = false; 
@@ -40,16 +44,28 @@ namespace LiteMonitor.src.UI.Controls
             this.Font = _baseFont;
         }
 
-        // --- 局部刷新区域计算 ---
+        // ★★★ 修复2：启用 WS_EX_COMPOSITED (终极防闪烁) ★★★
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                CreateParams cp = base.CreateParams;
+                cp.ExStyle |= 0x02000000; // WS_EX_COMPOSITED (双缓冲合成)
+                return cp;
+            }
+        }
+
+        // ★★★ 修复3：彻底删除 WndProc 方法 (让系统正常擦除背景，解决底部黑屏) ★★★
+
         public void InvalidateSensorValue(TreeNode node)
         {
             if (node == null || node.Bounds.Height <= 0) return;
             
-            // 计算右侧动态区域宽度：Value + Max + Icon + Margin
-            int refreshWidth = UIUtils.S(ColValueWidth + ColMaxWidth + IconWidth + RightMargin + 15); 
+            // 计算需要重绘的右侧区域宽度
+            // 包含：Value列 + Max列 + 右边距 (图标已移到左侧，不再包含)
+            int refreshWidth = UIUtils.S(ColValueWidth + ColMaxWidth + RightMargin + 10); 
             int safeWidth = this.ClientSize.Width;
 
-            // 只重绘右侧这一块
             Rectangle dirtyRect = new Rectangle(safeWidth - refreshWidth, node.Bounds.Y, refreshWidth, node.Bounds.Height);
             this.Invalidate(dirtyRect);
         }
@@ -65,31 +81,32 @@ namespace LiteMonitor.src.UI.Controls
             int w = this.ClientSize.Width; 
             Rectangle fullRow = new Rectangle(0, e.Bounds.Y, w, this.ItemHeight);
 
-            // 1. 背景
+            // 绘制背景
             if ((e.State & TreeNodeStates.Selected) != 0) g.FillRectangle(_selectBgBrush, fullRow);
             else if ((e.State & TreeNodeStates.Hot) != 0) g.FillRectangle(_hoverBrush, fullRow);
             else g.FillRectangle(Brushes.White, fullRow);
 
-            // 2. 分割线
+            // 分割线
             g.DrawLine(_linePen, 0, fullRow.Bottom - 1, w, fullRow.Bottom - 1);
 
-            // --- ★★★ 坐标计算 (从最右侧开始往左推) ★★★ ---
-            // 基准线 = 窗口宽度 - 右边距
+            // --- 坐标计算 (左侧图标) ---
+            // 基础缩进量
+            int baseIndent = e.Node.Level * UIUtils.S(20);
+            // 图标区域 (在文本之前)
+            Rectangle chevronRect = new Rectangle(baseIndent + UIUtils.S(5), fullRow.Y, UIUtils.S(IconWidth), fullRow.Height);
+
+            // --- 坐标计算 (右侧数值) ---
             int xBase = w - UIUtils.S(RightMargin); 
             
-            // 折叠图标区域
-            Rectangle chevronRect = new Rectangle(xBase - UIUtils.S(IconWidth), fullRow.Y, UIUtils.S(IconWidth), fullRow.Height);
-            
-            // Max 列区域 (在图标左侧)
-            int xMax = chevronRect.X - UIUtils.S(5) - UIUtils.S(ColMaxWidth);
+            // Max 列区域
+            int xMax = xBase - UIUtils.S(25) - UIUtils.S(ColMaxWidth);
             Rectangle maxRect = new Rectangle(xMax, fullRow.Y, UIUtils.S(ColMaxWidth), fullRow.Height);
 
             // Value 列区域 (在 Max 左侧)
-            int xValue = xMax - UIUtils.S(10) - UIUtils.S(ColValueWidth);
+            int xValue = xMax - UIUtils.S(20) - UIUtils.S(ColValueWidth);
             Rectangle valRect = new Rectangle(xValue, fullRow.Y, UIUtils.S(ColValueWidth), fullRow.Height);
 
-
-            // 3. 绘制折叠图标 (如果有子节点)
+            // 3. 绘制折叠图标 (如果有子节点，画在左侧)
             if (e.Node.Nodes.Count > 0)
             {
                 DrawChevron(g, chevronRect, e.Node.IsExpanded);
@@ -98,47 +115,46 @@ namespace LiteMonitor.src.UI.Controls
             // 4. 绘制数值 (仅传感器)
             if (e.Node.Tag is ISensor sensor)
             {
-                // Max (灰色)
+                // Max (灰色) - SingleLine
                 string maxStr = FormatValue(sensor.Max, sensor.SensorType);
-                TextRenderer.DrawText(g, maxStr, _baseFont, maxRect, Color.Gray, TextFormatFlags.VerticalCenter | TextFormatFlags.Right);
+                TextRenderer.DrawText(g, maxStr, _baseFont, maxRect, Color.Gray, 
+                    TextFormatFlags.VerticalCenter | TextFormatFlags.Right | TextFormatFlags.SingleLine);
 
-                // Value (彩色)
+                // Value (彩色) - SingleLine
                 string valStr = FormatValue(sensor.Value, sensor.SensorType);
                 Color valColor = GetColorByType(sensor.SensorType);
-                TextRenderer.DrawText(g, valStr, _baseFont, valRect, valColor, TextFormatFlags.VerticalCenter | TextFormatFlags.Right);
+                TextRenderer.DrawText(g, valStr, _baseFont, valRect, valColor, 
+                    TextFormatFlags.VerticalCenter | TextFormatFlags.Right | TextFormatFlags.SingleLine);
             }
 
-            // 5. 绘制左侧文本
-            // --- ★★★ 颜色与字体逻辑修正 ★★★ ---
+            // 5. 绘制文本
             Color txtColor;
             Font font;
 
             if (e.Node.Tag is IHardware) 
             {
-                // 情况1：硬件 (主板、CPU、显卡、SuperIO芯片) -> 纯黑 + 粗体
                 font = _boldFont;
                 txtColor = Color.Black;
             }
             else if (e.Node.Tag is ISensor)
             {
-                // 情况2：传感器 (具体的温度、电压) -> 深灰 + 常规
                 font = _baseFont;
-                txtColor = Color.FromArgb(20, 20, 20); 
+                txtColor = Color.FromArgb(00, 00, 00); 
             }
             else 
             {
-                // 情况3：类型分类 (Temperatures, Fans, Controls) -> 深灰 + 粗体 (比硬件淡一点)
-                // 只要 Tag 不是硬件也不是传感器，就认为是分类组
                 font = _boldFont;
                 txtColor = Color.FromArgb(30, 30, 30); 
             }
 
-            // 计算文本绘制区域 (左侧缩进 -> Value列左侧)
-            int indent = (e.Node.Level * UIUtils.S(20)) + UIUtils.S(10);
-            int textWidth = xValue - indent - UIUtils.S(10); 
+            // 文本起始位置在图标之后
+            int textStartX = chevronRect.Right + UIUtils.S(5);
+            // 文本宽度截止到 Value 列之前
+            int textWidth = xValue - textStartX - UIUtils.S(10); 
+            Rectangle textRect = new Rectangle(textStartX, fullRow.Y, textWidth, fullRow.Height);
             
-            Rectangle textRect = new Rectangle(indent, fullRow.Y, textWidth, fullRow.Height);
-            TextRenderer.DrawText(g, e.Node.Text, font, textRect, txtColor, TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
+            TextRenderer.DrawText(g, e.Node.Text, font, textRect, txtColor, 
+                TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis);
         }
 
         private void DrawChevron(Graphics g, Rectangle rect, bool expanded)
@@ -154,7 +170,7 @@ namespace LiteMonitor.src.UI.Controls
                     g.DrawLine(p, cx - size, cy - 2, cx, cy + 3);
                     g.DrawLine(p, cx, cy + 3, cx + size, cy - 2);
                 }
-                else // > (折叠状态)
+                else // >
                 {
                     g.DrawLine(p, cx - 2, cy - size, cx + 2, cy);
                     g.DrawLine(p, cx + 2, cy, cx - 2, cy + size);
@@ -198,8 +214,14 @@ namespace LiteMonitor.src.UI.Controls
             var node = this.GetNodeAt(e.X, e.Y);
             if (node != null && node.Nodes.Count > 0)
             {
-                // 点击右侧折叠区 (宽度放大一点方便点击)
-                if (e.X > this.ClientSize.Width - UIUtils.S(RightMargin + IconWidth + 20)) 
+                // 计算左侧图标的有效点击区域
+                int baseIndent = node.Level * UIUtils.S(20);
+                // 给图标左右各加一点缓冲区域方便点击
+                int clickAreaStart = baseIndent;
+                int clickAreaEnd = baseIndent + UIUtils.S(IconWidth) + UIUtils.S(15);
+
+                // 如果点击了左侧图标区域
+                if (e.X >= clickAreaStart && e.X <= clickAreaEnd) 
                 {
                     if (node.IsExpanded) node.Collapse(); else node.Expand();
                 }

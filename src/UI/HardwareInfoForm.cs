@@ -18,7 +18,7 @@ namespace LiteMonitor.src.UI
         public HardwareInfoForm()
         {
             this.Text = "Hardware Inspector";
-            this.Size = new Size(UIUtils.S(650), UIUtils.S(750)); // 稍微加宽一点
+            this.Size = new Size(UIUtils.S(600), UIUtils.S(750)); // 稍微加宽一点
             this.StartPosition = FormStartPosition.CenterScreen;
             this.BackColor = Color.White;
             this.Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath);
