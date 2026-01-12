@@ -19,9 +19,12 @@ namespace LiteMonitor.src.SystemServices
     public class FpsCounter : IDisposable
     {
         // 状态标志
-        // private bool _isDownloading = false; // [修改] 移交给 DriverInstaller 管理
         private bool _isRunning = false;     // FPS 计数服务运行状态
         private bool _isRestarting = false;  // 服务重启状态
+        
+        // ★★★ [新增] 启动锁和最后活动时间，用于控制进程生命周期 ★★★
+        private bool _isStarting = false;    // 防止重复启动的标志
+        private DateTime _lastAccessTime = DateTime.MinValue; // 最后一次被 UI 请求数据的时间
         
         private Process? _presentMonProc;     // PresentMon 进程实例
         private DateTime _lastDataTime = DateTime.MinValue; // 最后一次收到数据的时间
@@ -66,9 +69,6 @@ namespace LiteMonitor.src.SystemServices
         private static readonly string ExePath = Path.Combine(AssetDir, "LiteMonitorFPS.exe");
         private static readonly string LogPath = Path.Combine(BaseDir, "fps_debug.log");
         
-        // [删除] 不再需要硬编码的下载链接
-        // private const string DownloadUrl = "https://github.com/GameTechDev/PresentMon/releases/download/v1.9.2/PresentMon-1.9.2-x64.exe";
-
         /// <summary>
         /// 内部结构体：一次采样的记录
         /// 存储某段时间内的帧数和持续时间
@@ -105,7 +105,7 @@ namespace LiteMonitor.src.SystemServices
                 }
             });
 
-            // 3秒检查一次服务健康状态
+            // 3秒检查一次服务健康状态和生命周期
             Task.Run(async () =>
             {
                 while (true)
@@ -115,8 +115,8 @@ namespace LiteMonitor.src.SystemServices
                 }
             });
             
-            // 启动 PresentMon 服务
-            Task.Run(() => StartService());
+            // ★★★ [修改] 构造函数中不再自动启动服务，改为按需启动 ★★★
+            // Task.Run(() => StartService()); 
         }
 
         private void Log(string msg)
@@ -131,6 +131,16 @@ namespace LiteMonitor.src.SystemServices
         /// <returns>当前聚焦进程的 FPS 值，无数据时返回 0</returns>
         public float? GetFps()
         {
+            // ★★★ [修改] 记录本次访问时间，并触发惰性启动 ★★★
+            _lastAccessTime = DateTime.Now;
+
+            // 如果没运行且没在启动中，尝试启动服务
+            if (!_isRunning && !_isStarting && !_isRestarting)
+            {
+                _isStarting = true; // 简单锁
+                Task.Run(() => StartService());
+            }
+
             if (!_isRunning) return 0f;
             if (_calculatedProcessFps.IsEmpty) 
             {
@@ -221,12 +231,26 @@ namespace LiteMonitor.src.SystemServices
         /// </summary>
         private void CheckHealth()
         {
-            if (_isRestarting) return;
-            // 判断服务是否异常：超过3秒没有收到数据或进程已退出
-            bool isDead = _isRunning && (DateTime.Now - _lastDataTime).TotalSeconds > 3;
-            if (_presentMonProc == null || _presentMonProc.HasExited) isDead = true;
-            // 异常时重启服务
-            if (isDead) Task.Run(() => RestartService());
+            if (_isRestarting || _isStarting) return;
+
+            // ★★★ [新增] 自动关闭逻辑：如果超过 5 秒没有 UI 请求 FPS 数据，关闭进程 ★★★
+            // 这意味着用户关闭了 FPS 显示功能
+            if (_isRunning && (DateTime.Now - _lastAccessTime).TotalSeconds > 5)
+            {
+                Dispose(); // 销毁进程
+                return;
+            }
+
+            // 只有在应该运行（有请求）的情况下才检查僵死状态
+            if (_isRunning && (DateTime.Now - _lastAccessTime).TotalSeconds <= 5)
+            {
+                // 判断服务是否异常：超过3秒没有收到数据或进程已退出
+                bool isDead = (DateTime.Now - _lastDataTime).TotalSeconds > 3;
+                if (_presentMonProc == null || _presentMonProc.HasExited) isDead = true;
+                
+                // 异常时重启服务
+                if (isDead) Task.Run(() => RestartService());
+            }
         }
 
         /// <summary>
@@ -255,19 +279,18 @@ namespace LiteMonitor.src.SystemServices
         {
             try
             {
+                _isStarting = true;
+
                 // 检查是否有管理员权限（PresentMon 需要管理员权限）
                 if (!IsAdministrator()) return;
                 
                 // 处理 PresentMon 可执行文件的重命名逻辑
-                // [注意] 这里假设 resources/assets 下可能存在 pm_lite.exe 这种旧名称，保持原逻辑兼容
                 string pmLite = Path.Combine(AssetDir, "pm_lite.exe");
                 if (File.Exists(pmLite) && !File.Exists(ExePath)) File.Move(pmLite, ExePath);
                 
                 // ★★★ [修改] 如果 PresentMon 不存在，调用 DriverInstaller 自动下载 ★★★
                 if (!File.Exists(ExePath))
                 {
-                    // 调用同步等待 (因为 StartService 是在 Task.Run 里跑的，所以不会卡死 UI)
-                    // 使用 silent: true，静默下载
                     var downloadTask = _driverInstaller.CheckAndDownloadPresentMon(silent: true);
                     downloadTask.Wait(); 
                 }
@@ -323,6 +346,10 @@ namespace LiteMonitor.src.SystemServices
                 });
             }
             catch { }
+            finally
+            {
+                _isStarting = false;
+            }
         }
 
         /// <summary>
@@ -461,8 +488,6 @@ namespace LiteMonitor.src.SystemServices
             try { return Process.GetProcessById(pid).ProcessName; } catch { return "Unknown"; }
         }
 
-        // [删除] 原有的 DownloadPresentMon 方法已废弃，改用 DriverInstaller
-
         /// <summary>
         /// 清理 PresentMon 僵尸进程和会话
         /// </summary>
@@ -499,6 +524,8 @@ namespace LiteMonitor.src.SystemServices
                 // 终止 PresentMon 进程并清理僵尸进程
                 _presentMonProc?.Kill(); 
                 ForceKillZombies(); 
+                // 注意：这里没有设置 _isRunning = false，因为 Kill 后会触发 WaitForExitAsync 的回调来设置它
+                // 但为了保险起见，可以手动设置（如果需要同步停止）
             } catch { }
         }
     }

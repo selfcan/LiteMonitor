@@ -222,10 +222,16 @@ namespace LiteMonitor.src.SystemServices
                                 // 写入文件
                                 await File.WriteAllBytesAsync(savePath, data, cts.Token);
 
-                                // 简单校验：文件大于 1KB 认为成功
+                                // 简单校验：文件大于  300KB认为成功
                                 if (new FileInfo(savePath).Length > 1024*300)
                                 {
                                     return true; // 下载成功，直接返回
+                                }
+                                else
+                                {
+                                    // ★★★ [修复] 文件太小，可能是错误的网页，删除文件以免影响下次判断 ★★★
+                                    Debug.WriteLine($"[Downloader] File too small ({new FileInfo(savePath).Length} bytes), deleting...");
+                                    try { File.Delete(savePath); } catch { }
                                 }
                             }
                         }
@@ -233,6 +239,8 @@ namespace LiteMonitor.src.SystemServices
                     catch (Exception ex)
                     {
                         Debug.WriteLine($"[Downloader] Error: {url} -> {ex.Message}");
+                        // 下载异常也尝试清理可能残留的空文件
+                        try { if (File.Exists(savePath) && new FileInfo(savePath).Length < 1024) File.Delete(savePath); } catch { }
                     }
                 }
             }
