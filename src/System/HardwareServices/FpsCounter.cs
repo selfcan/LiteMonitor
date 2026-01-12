@@ -22,7 +22,7 @@ namespace LiteMonitor.src.SystemServices
         private bool _isRunning = false;     // FPS 计数服务运行状态
         private bool _isRestarting = false;  // 服务重启状态
         
-        // ★★★ [新增] 启动锁和最后活动时间，用于控制进程生命周期 ★★★
+        // ★★★ [新增] 启动锁和最后 activity 时间，用于控制进程生命周期 ★★★
         private bool _isStarting = false;    // 防止重复启动的标志
         private DateTime _lastAccessTime = DateTime.MinValue; // 最后一次被 UI 请求数据的时间
         
@@ -116,7 +116,6 @@ namespace LiteMonitor.src.SystemServices
             });
             
             // ★★★ [修改] 构造函数中不再自动启动服务，改为按需启动 ★★★
-            // Task.Run(() => StartService()); 
         }
 
         private void Log(string msg)
@@ -234,7 +233,6 @@ namespace LiteMonitor.src.SystemServices
             if (_isRestarting || _isStarting) return;
 
             // ★★★ [新增] 自动关闭逻辑：如果超过 5 秒没有 UI 请求 FPS 数据，关闭进程 ★★★
-            // 这意味着用户关闭了 FPS 显示功能
             if (_isRunning && (DateTime.Now - _lastAccessTime).TotalSeconds > 5)
             {
                 Dispose(); // 销毁进程
@@ -283,10 +281,6 @@ namespace LiteMonitor.src.SystemServices
 
                 // 检查是否有管理员权限（PresentMon 需要管理员权限）
                 if (!IsAdministrator()) return;
-                
-                // 处理 PresentMon 可执行文件的重命名逻辑
-                string pmLite = Path.Combine(AssetDir, "pm_lite.exe");
-                if (File.Exists(pmLite) && !File.Exists(ExePath)) File.Move(pmLite, ExePath);
                 
                 // ★★★ [修改] 如果 PresentMon 不存在，调用 DriverInstaller 自动下载 ★★★
                 if (!File.Exists(ExePath))
@@ -524,8 +518,7 @@ namespace LiteMonitor.src.SystemServices
                 // 终止 PresentMon 进程并清理僵尸进程
                 _presentMonProc?.Kill(); 
                 ForceKillZombies(); 
-                // 注意：这里没有设置 _isRunning = false，因为 Kill 后会触发 WaitForExitAsync 的回调来设置它
-                // 但为了保险起见，可以手动设置（如果需要同步停止）
+                _isRunning = false; // 同步重置状态
             } catch { }
         }
     }
