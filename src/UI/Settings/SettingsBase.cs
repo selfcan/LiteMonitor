@@ -37,6 +37,12 @@ namespace LiteMonitor.src.UI.SettingsPage
             UI = ui;
         }
 
+        public void ClearBindings()
+        {
+            _loadActions.Clear();
+            _saveActions.Clear();
+        }
+
         // =============================================================
         //  UI 工厂方法 (Factory Methods)
         // =============================================================
@@ -51,6 +57,65 @@ namespace LiteMonitor.src.UI.SettingsPage
             onCreated?.Invoke(chk);
             group.AddItem(new LiteSettingsItem(LanguageManager.T(titleKey), chk));
             return chk;
+        }
+
+        /// <summary>
+        /// 快速添加：文本输入 (String)
+        /// </summary>
+        protected LiteUnderlineInput AddString(LiteSettingsGroup group, string title, Func<string> get, Action<string> set, string placeholder = "")
+        {
+            var input = new LiteUnderlineInput(get(), "", "", 120);
+            input.Padding = UIUtils.S(new Padding(0, 5, 0, 1));
+            if (!string.IsNullOrEmpty(placeholder)) input.Placeholder = placeholder;
+
+            BindString(input, get, set);
+            group.AddItem(new LiteSettingsItem(title, input));
+            return input;
+        }
+
+        /// <summary>
+        /// 快速添加：下拉框 (ComboBox) - 键值对 (Dynamic / Reflection)
+        /// </summary>
+        protected LiteComboBox AddComboPair(LiteSettingsGroup group, string title, IEnumerable<dynamic> options, Func<string> get, Action<string> set)
+        {
+            var cmb = new LiteComboBox();
+            foreach (var opt in options)
+            {
+                string label = "";
+                string val = "";
+                
+                Type t = opt.GetType();
+                var pLabel = t.GetProperty("Label");
+                var pValue = t.GetProperty("Value");
+                
+                if (pLabel != null) label = pLabel.GetValue(opt)?.ToString();
+                if (pValue != null) val = pValue.GetValue(opt)?.ToString();
+                
+                cmb.AddItem(label, val);
+            }
+            
+            BindComboPair(cmb, get, set);
+            group.AddItem(new LiteSettingsItem(title, cmb));
+
+             // ★★★ 新增：下拉时自动调整宽度 ★★★
+            cmb.Inner.DropDown += (s, e) =>
+            {
+                var box = (ComboBox)s;
+                int maxWidth = box.Width; // 至少和控件本身一样宽
+                int scrollBarWidth = SystemInformation.VerticalScrollBarWidth;
+
+                foreach (var item in box.Items)
+                {
+                    if (item == null) continue;
+                    // 计算文字宽度 + 滚动条预留空间 + 一点边距缓冲(10)
+                    int w = TextRenderer.MeasureText(item.ToString(), box.Font).Width + scrollBarWidth + 10;
+                    if (w > maxWidth) maxWidth = w;
+                }
+                
+                // 设置下拉列表的宽度（不会改变控件本身的显示宽度）
+                box.DropDownWidth = maxWidth;
+            };
+            return cmb;
         }
 
         /// <summary>
@@ -205,6 +270,27 @@ namespace LiteMonitor.src.UI.SettingsPage
             Refresh();
             _loadActions.Add(Refresh);
             _saveActions.Add(() => setter(input.HexValue));
+        }
+
+        protected void BindString(LiteUnderlineInput input, Func<string> getter, Action<string> setter)
+        {
+            void Refresh() => input.Inner.Text = getter();
+            Refresh();
+            _loadActions.Add(Refresh);
+            
+            // Register save action
+            _saveActions.Add(() => setter(input.Inner.Text));
+        }
+
+        protected void BindComboPair(LiteComboBox cmb, Func<string> getter, Action<string> setter)
+        {
+            void Refresh() => cmb.SelectValue(getter());
+            Refresh();
+            _loadActions.Add(Refresh);
+            
+            _saveActions.Add(() => {
+                if (cmb.SelectedValue != null) setter(cmb.SelectedValue);
+            });
         }
 
         protected void EnsureSafeVisibility(LiteCheck chkHideMain, LiteCheck chkHideTray, LiteCheck chkShowTaskbar)

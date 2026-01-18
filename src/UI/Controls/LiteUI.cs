@@ -121,23 +121,25 @@ namespace LiteMonitor.src.UI.Controls
 
     public class LiteSettingsItem : Panel
     {
+        public Label Label { get; private set; }
+
         public LiteSettingsItem(string text, Control ctrl)
         {
             // ★★★ 修改：Height/Margin 缩放
             this.Height = UIUtils.S(40);
             this.Margin = UIUtils.S(new Padding(0, 2, 40, 2)); 
-            var lbl = new Label { 
+            Label = new Label { 
                 Text = text, AutoSize = true, 
                 Font = new Font("Microsoft YaHei UI", 9F), ForeColor = UIColors.TextMain,
                 TextAlign = ContentAlignment.MiddleLeft 
             };
             // ★★★ 修改：Height 缩放
             if (ctrl is LiteCheck) ctrl.Height = UIUtils.S(22); 
-            this.Controls.Add(lbl);
+            this.Controls.Add(Label);
             this.Controls.Add(ctrl);
             this.Layout += (s, e) => {
                 int mid = this.Height / 2;
-                lbl.Location = new Point(0, mid - lbl.Height / 2);
+                Label.Location = new Point(0, mid - Label.Height / 2);
                 ctrl.Location = new Point(this.Width - ctrl.Width, mid - ctrl.Height / 2);
             };
             this.Paint += (s, e) => {
@@ -146,6 +148,7 @@ namespace LiteMonitor.src.UI.Controls
             };
         }
     }
+
 
     public class LiteCard : Panel
     {
@@ -163,6 +166,21 @@ namespace LiteMonitor.src.UI.Controls
         public TextBox Inner;
         private Label _lblUnit;   // 单位 (右侧)
         private Label _lblLabel;  // 标签 (左侧)
+
+        private const int EM_SETCUEBANNER = 0x1501;
+        [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Auto)]
+        private static extern Int32 SendMessage(IntPtr hWnd, int msg, int wParam, [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)] string lParam);
+
+        public string Placeholder
+        {
+            set
+            {
+                if (Inner != null && !Inner.IsDisposed)
+                {
+                    SendMessage(Inner.Handle, EM_SETCUEBANNER, 0, value);
+                }
+            }
+        }
 
         public LiteUnderlineInput(string text, string unit = "", string labelPrefix = "", int width = 160, Color? fontColor = null,HorizontalAlignment align = HorizontalAlignment.Left) // ★ 新增参数)
         {
@@ -322,6 +340,13 @@ namespace LiteMonitor.src.UI.Controls
 
     // 其他原有组件
     public class LiteNote : Panel { public LiteNote(string text, int indent = 0) { this.Dock = DockStyle.Top; this.Height = UIUtils.S(32); this.Margin = new Padding(0); var lbl = new Label { Text = text, AutoSize = true, Font = new Font("Microsoft YaHei UI", 8F), ForeColor = Color.Gray, Location = new Point(UIUtils.S(indent), UIUtils.S(10)) }; this.Controls.Add(lbl); } }
+    public class LiteComboItem 
+    { 
+        public string Text { get; set; } 
+        public string Value { get; set; } 
+        public override string ToString() => Text;
+    }
+
     public class LiteComboBox : Panel 
     { 
         public ComboBox Inner; 
@@ -363,6 +388,32 @@ namespace LiteMonitor.src.UI.Controls
         public int SelectedIndex { get => Inner.SelectedIndex; set => Inner.SelectedIndex = value; } 
         public ComboBox.ObjectCollection Items => Inner.Items; 
         public override string Text { get => Inner.Text; set => Inner.Text = value; } 
+
+        // Helper methods for Key-Value pairs
+        public void AddItem(string text, string value)
+        {
+             Inner.Items.Add(new LiteComboItem { Text = text, Value = value });
+             Inner.DisplayMember = "Text";
+             Inner.ValueMember = "Value";
+        }
+        
+        public void SelectValue(string value)
+        {
+             for(int i=0; i<Inner.Items.Count; i++)
+             {
+                 if (Inner.Items[i] is LiteComboItem item && item.Value == value)
+                 {
+                     Inner.SelectedIndex = i;
+                     return;
+                 }
+             }
+             if (Inner.Items.Count > 0) Inner.SelectedIndex = 0;
+        }
+
+        public string SelectedValue 
+        {
+            get => (Inner.SelectedItem as LiteComboItem)?.Value;
+        }
     }
     public class LiteLink : Label
     {
@@ -378,15 +429,83 @@ namespace LiteMonitor.src.UI.Controls
             this.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Underline);
             
             if (onClick != null)
-                this.Click += (s, e) => onClick();
+                this.Click += (s, e) => { if (this.Enabled) onClick(); };
 
-            this.MouseEnter += (s, e) => this.ForeColor = _hoverColor;
-            this.MouseLeave += (s, e) => this.ForeColor = _normalColor;
+            this.MouseEnter += (s, e) => { if (this.Enabled) this.ForeColor = _hoverColor; };
+            this.MouseLeave += (s, e) => { if (this.Enabled) this.ForeColor = _normalColor; };
+        }
+
+        public void SetColor(Color normal, Color hover)
+        {
+            _normalColor = normal;
+            _hoverColor = hover;
+            if (Enabled) this.ForeColor = normal;
+        }
+
+        public new bool Enabled
+        { 
+            get => base.Enabled; 
+            set 
+            { 
+                base.Enabled = value;
+                this.Cursor = value ? Cursors.Hand : Cursors.Default;
+                this.ForeColor = value ? _normalColor : Color.Gray;
+            } 
         }
     }
 
+    // =======================================================================
+    // 3. 组合/高级组件 (New Standard Components)
+    // =======================================================================
+
+
     public class LiteCheck : CheckBox { public LiteCheck(bool val, string text = "") { Checked = val; AutoSize = true; Cursor = Cursors.Hand; Text = text; Padding = UIUtils.S(new Padding(2)); ForeColor = UIColors.TextSub; Font = new Font("Microsoft YaHei UI", 9F); } }
-    public class LiteButton : Button { public LiteButton(string t, bool p) { Text = t; Size = new Size(UIUtils.S(80), UIUtils.S(32)); FlatStyle = FlatStyle.Flat; Cursor = Cursors.Hand; Font = new Font("Microsoft YaHei UI", 9F); if (p) { BackColor = UIColors.Primary; ForeColor = Color.White; FlatAppearance.BorderSize = 0; } else { BackColor = Color.White; ForeColor = UIColors.TextMain; FlatAppearance.BorderColor = UIColors.Border; } } }
+    
+    public class LiteButton : Button 
+    { 
+        private bool _dashed;
+        
+        public LiteButton(string t, bool p = false, bool dashed = false) 
+        { 
+            Text = t; 
+            _dashed = dashed;
+            Size = new Size(UIUtils.S(80), UIUtils.S(32)); 
+            FlatStyle = FlatStyle.Flat; 
+            Cursor = Cursors.Hand; 
+            Font = new Font("Microsoft YaHei UI", 9F); 
+            
+            if (p) 
+            { 
+                BackColor = UIColors.Primary; 
+                ForeColor = Color.White; 
+                FlatAppearance.BorderSize = 0; 
+            } 
+            else if (dashed)
+            {
+                BackColor = Color.Transparent;
+                ForeColor = UIColors.TextSub;
+                FlatAppearance.BorderSize = 0;
+            }
+            else 
+            { 
+                BackColor = Color.White; 
+                ForeColor = UIColors.TextMain; 
+                FlatAppearance.BorderColor = UIColors.Border; 
+            } 
+        } 
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            if (_dashed)
+            {
+                using (var pen = new Pen(Color.LightGray, 1.5f) { DashStyle = System.Drawing.Drawing2D.DashStyle.Dash })
+                {
+                    e.Graphics.DrawRectangle(pen, 0, 0, Width - 1, Height - 1);
+                }
+            }
+        }
+    }
     public class LiteNavBtn : Button { private bool _isActive; public bool IsActive { get => _isActive; set { _isActive = value; Invalidate(); } } public LiteNavBtn(string text) { Text = "  " + text; Size = new Size(UIUtils.S(150), UIUtils.S(40)); FlatStyle = FlatStyle.Flat; FlatAppearance.BorderSize = 0; TextAlign = ContentAlignment.MiddleLeft; Font = new Font("Microsoft YaHei UI", 10F); Cursor = Cursors.Hand; Margin = UIUtils.S(new Padding(5, 2, 5, 2)); BackColor = UIColors.SidebarBg; ForeColor = UIColors.TextMain; } protected override void OnPaint(PaintEventArgs e) { Color bg = _isActive ? UIColors.NavSelected : (ClientRectangle.Contains(PointToClient(Cursor.Position)) ? UIColors.NavHover : UIColors.SidebarBg); using (var b = new SolidBrush(bg)) e.Graphics.FillRectangle(b, ClientRectangle); if (_isActive) { using (var b = new SolidBrush(UIColors.Primary)) e.Graphics.FillRectangle(b, 0, UIUtils.S(8), UIUtils.S(3), Height - UIUtils.S(16)); Font = new Font(Font, FontStyle.Bold); } else { Font = new Font(Font, FontStyle.Regular); } TextRenderer.DrawText(e.Graphics, Text, Font, new Point(UIUtils.S(12), UIUtils.S(9)), UIColors.TextMain); } protected override void OnMouseEnter(EventArgs e) { base.OnMouseEnter(e); Invalidate(); } protected override void OnMouseLeave(EventArgs e) { base.OnMouseLeave(e); Invalidate(); } }
     public class LiteSortBtn : Button { public LiteSortBtn(string txt) { Text = txt; Size = new Size(UIUtils.S(24), UIUtils.S(24)); FlatStyle = FlatStyle.Flat; FlatAppearance.BorderSize = 0; BackColor = Color.FromArgb(245, 245, 245); ForeColor = Color.DimGray; Cursor = Cursors.Hand; Font = new Font("Microsoft YaHei UI", 7F, FontStyle.Bold); Margin = new Padding(0); } }
     

@@ -140,7 +140,6 @@
     "TaskbarCustomTip": "⚠️Set BG color close to system taskbar color.",
     "ScreenColorPicker": "Color Picker",
     "ScreenColorPickerTip": "Set BG color to:",
-    "HorizontalFollowsTaskbar": "Bar follows taskbar order",
     "LabelColor": "Label",
     "ValueSafeColor": "Value",
     "ValueWarnColor": "Warn",

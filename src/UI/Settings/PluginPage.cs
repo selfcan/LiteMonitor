@@ -93,55 +93,56 @@ namespace LiteMonitor.src.UI.SettingsPage
             var group = new LiteSettingsGroup(title);
 
             // 1. Description & Actions (Header Panel)
-            var headerPanel = new Panel {
-                Height = UIUtils.S(30),
-                Padding = new Padding(0)
-            };
-
-            // Button (Right)
-            LiteButton btnAction = null;
+            // Use LiteSettingsGroup's built-in header action support
             if (isDefault)
             {
-                // Copy Button: Primary Style (Blue)
-                btnAction = new LiteButton(LanguageManager.T("Menu.Copy") == "Menu.Copy" ? "复制" : LanguageManager.T("Menu.Copy"), true);
-                btnAction.Click += (s, e) => CopyInstance(inst);
+                var linkCopy = new LiteLink(LanguageManager.T("Menu.Copy") == "Menu.Copy" ? "复制副本" : LanguageManager.T("Menu.Copy"), () => CopyInstance(inst));
+                group.AddHeaderAction(linkCopy);
             }
             else
             {
-                // Delete Button: Danger Style (Red)
-                btnAction = new LiteButton(LanguageManager.T("Menu.Delete") == "Menu.Delete" ? "删除" : LanguageManager.T("Menu.Delete"), false);
-                btnAction.BackColor = Color.IndianRed;
-                btnAction.ForeColor = Color.White;
-                btnAction.FlatAppearance.BorderColor = Color.IndianRed;
-                btnAction.Click += (s, e) => DeleteInstance(inst);
+                var linkDel = new LiteLink(LanguageManager.T("Menu.Delete") == "Menu.Delete" ? "删除插件" : LanguageManager.T("Menu.Delete"), () => DeleteInstance(inst));
+                linkDel.ForeColor = Color.IndianRed;
+                // Override hover color for delete
+                linkDel.SetColor(Color.IndianRed, Color.Red);
+                group.AddHeaderAction(linkDel);
             }
-            btnAction.Size = new Size(UIUtils.S(60), UIUtils.S(24));
-            btnAction.Dock = DockStyle.Right;
 
-            // Description (Fill)
-            var note = new LiteNote(string.IsNullOrEmpty(tmpl.Meta.Description) ? " " : tmpl.Meta.Description);
-            note.Dock = DockStyle.Fill;
-
-            headerPanel.Controls.Add(btnAction); // Add Right first
-            headerPanel.Controls.Add(note);      // Add Fill second
-            btnAction.BringToFront();            // Ensure button is on top/clickable
-
-            group.AddFullItem(headerPanel);
+            // Description as a note below header (if needed) or merged?
+            // The previous LiteActionHeader displayed description as title.
+            // But LiteSettingsGroup already has a title.
+            // Let's add the description as a LiteNote if it's different from title, or just ignore if it's redundant.
+            // The user's original request was "PluginPage UI refactoring".
+            // The previous code put description in LiteActionHeader title.
+            // But LiteSettingsGroup title is "Name v1.0 ...".
+            // If description is useful, we add it as a Note.
+            if (!string.IsNullOrEmpty(tmpl.Meta.Description))
+            {
+                 var note = new LiteNote(tmpl.Meta.Description);
+                 group.AddFullItem(note);
+            }
 
             // 2. Enable Switch (Label = Plugin Name)
-            LocalAddBool(group, tmpl.Meta.Name, 
-                inst.Enabled, 
+            AddBool(group, tmpl.Meta.Name, 
+                () => inst.Enabled, 
                 v => {
-                    inst.Enabled = v;
-                    SaveAndRestart(inst);
+                    if (inst.Enabled != v) {
+                        inst.Enabled = v;
+                        SaveAndRestart(inst);
+                    }
                 }
             );
 
             // 3. Refresh Rate (Replaces ID Input)
-            int currentInterval = inst.CustomInterval > 0 ? inst.CustomInterval : tmpl.Execution.Interval;
-            LocalAddNumber(group, "刷新频率", currentInterval, v => {
-                inst.CustomInterval = v;
-            }, () => SaveAndRestart(inst), "ms");
+            AddNumberInt(group, "刷新频率", "ms", 
+                () => inst.CustomInterval > 0 ? inst.CustomInterval : tmpl.Execution.Interval,
+                v => {
+                    if (inst.CustomInterval != v) {
+                        inst.CustomInterval = v;
+                        SaveAndRestart(inst);
+                    }
+                }
+            );
 
             // Split Inputs
             var globalInputs = tmpl.Inputs.Where(x => x.Scope != "target").ToList();
@@ -150,10 +151,17 @@ namespace LiteMonitor.src.UI.SettingsPage
             // 4. Global Inputs
             foreach (var input in globalInputs)
             {
-                var currentVal = inst.InputValues.ContainsKey(input.Key) ? inst.InputValues[input.Key] : input.DefaultValue;
-                LocalAddString(group, input.Label, currentVal, v => {
-                    inst.InputValues[input.Key] = v;
-                }, () => SaveAndRestart(inst));
+                AddString(group, input.Label, 
+                    () => inst.InputValues.ContainsKey(input.Key) ? inst.InputValues[input.Key] : input.DefaultValue,
+                    v => {
+                        string old = inst.InputValues.ContainsKey(input.Key) ? inst.InputValues[input.Key] : input.DefaultValue;
+                        if (old != v) {
+                            inst.InputValues[input.Key] = v;
+                            SaveAndRestart(inst);
+                        }
+                    }, 
+                    input.Placeholder
+                );
             }
 
             // 5. Targets Section (Only if plugin has target inputs)
@@ -181,10 +189,10 @@ namespace LiteMonitor.src.UI.SettingsPage
                     }
                 }
 
-                // Header for Targets
-                var targetsHeader = new LiteNote("--- 监控目标列表 ---");
-                targetsHeader.Padding = new Padding(0, 10, 0, 5);
-                group.AddFullItem(targetsHeader);
+                // // Header for Targets
+                // var targetsHeader = new LiteNote("--- 监控目标列表 ---");
+                // targetsHeader.Padding = new Padding(0, 10, 0, 5);
+                // group.AddFullItem(targetsHeader);
 
                 if (inst.Targets == null) inst.Targets = new List<Dictionary<string, string>>();
                 
@@ -194,30 +202,65 @@ namespace LiteMonitor.src.UI.SettingsPage
                     var targetVals = inst.Targets[i];
                     
                     // Target Header
-                    var headerPanel2 = new Panel { Height = UIUtils.S(30), Dock = DockStyle.Top };
-                    var lbl = new Label { Text = $"# 目标 {index + 1}", AutoSize = true, ForeColor = UIColors.Primary, Location = new Point(0, 8) };
-                    var btnRem = new LiteButton("移除", false) { Width = UIUtils.S(60), Height=UIUtils.S(24), Dock = DockStyle.Right };
-                    btnRem.Click += (s, e) => {
+                    // Use LiteSettingsItem to display Title + Remove Link
+                    
+                    // Remove Action
+                    var linkRem = new LiteLink("移除", () => {
                         inst.Targets.RemoveAt(index);
                         SaveAndRestart(inst);
                         RebuildUI();
-                    };
-                    headerPanel2.Controls.Add(btnRem);
-                    headerPanel2.Controls.Add(lbl);
-                    group.AddFullItem(headerPanel2);
+                    });
+                    linkRem.SetColor(Color.IndianRed, Color.Red);
+
+                    // [Logic] Prevent removing the last target
+                    if (inst.Targets.Count <= 1)
+                    {
+                        linkRem.Enabled = false;
+                    }
+
+                    var headerItem = new LiteSettingsItem($"# 目标 {index + 1}", linkRem);
+                    // Customize style to look like a sub-header
+                    headerItem.Label.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold);
+                    headerItem.Label.ForeColor = UIColors.Primary;
+                    
+                    group.AddFullItem(headerItem);
 
                     foreach (var input in targetInputs)
                     {
                         var val = targetVals.ContainsKey(input.Key) ? targetVals[input.Key] : input.DefaultValue;
-                        LocalAddString(group, "  " + input.Label, val, v => {
-                            targetVals[input.Key] = v;
-                        }, () => SaveAndRestart(inst));
+                        
+                        if (input.Type == "select" && input.Options != null)
+                        {
+                            AddComboPair(group, "  " + input.Label, input.Options,
+                                () => targetVals.ContainsKey(input.Key) ? targetVals[input.Key] : input.DefaultValue,
+                                v => {
+                                    string old = targetVals.ContainsKey(input.Key) ? targetVals[input.Key] : input.DefaultValue;
+                                    if (old != v) {
+                                        targetVals[input.Key] = v;
+                                        SaveAndRestart(inst);
+                                    }
+                                }
+                            );
+                        }
+                        else
+                        {
+                            AddString(group, "  " + input.Label, 
+                                () => targetVals.ContainsKey(input.Key) ? targetVals[input.Key] : input.DefaultValue,
+                                v => {
+                                    string old = targetVals.ContainsKey(input.Key) ? targetVals[input.Key] : input.DefaultValue;
+                                    if (old != v) {
+                                        targetVals[input.Key] = v;
+                                        SaveAndRestart(inst);
+                                    }
+                                }, 
+                                input.Placeholder
+                            );
+                        }
                     }
                 }
 
                 // Add Target Button
-                var btnAdd = new LiteButton("添加目标", true);
-                btnAdd.Size = new Size(UIUtils.S(100), UIUtils.S(30));
+                var btnAdd = new LiteButton("+ 添加新目标", false, true); // Dashed style
                 btnAdd.Click += (s, e) => {
                     // Pre-fill with default values
                     var newTarget = new Dictionary<string, string>();
@@ -229,15 +272,12 @@ namespace LiteMonitor.src.UI.SettingsPage
                         }
                     }
                     inst.Targets.Add(newTarget);
-                    SaveAndRestart(inst);
+                    // [Optimization] Do not trigger Save/Restart immediately to avoid empty requests
+                    // SaveAndRestart(inst); 
                     RebuildUI();
                 };
                 
-                var btnPanel = new Panel { Height = UIUtils.S(40), Padding = new Padding(0, 5, 0, 5) };
-                btnPanel.Controls.Add(btnAdd);
-                btnAdd.Dock = DockStyle.Fill;
-                
-                group.AddFullItem(btnPanel);
+                group.AddFullItem(btnAdd);
             }
 
             AddGroupToPage(group);
@@ -255,57 +295,6 @@ namespace LiteMonitor.src.UI.SettingsPage
         // =================================================================================
         // Local Helpers (Mimic SettingsPageBase but without persistent _loadActions)
         // =================================================================================
-
-        private void LocalAddBool(LiteSettingsGroup group, string title, bool initialVal, Action<bool> onChange)
-        {
-            var chk = new LiteCheck(false, LanguageManager.T("Menu.Enable"));
-            chk.Checked = initialVal;
-            chk.CheckedChanged += (s, e) => onChange(chk.Checked);
-            // Use title directly instead of T(titleKey) because title is dynamic (Plugin Name)
-            group.AddItem(new LiteSettingsItem(title, chk));
-        }
-
-        private void LocalAddString(LiteSettingsGroup group, string label, string initialVal, Action<string> onChange, Action onLeave)
-        {
-            // Narrower input: 120 width
-            var txt = new LiteUnderlineInput(initialVal, "", "", 120);
-            // Match SettingsPageBase.AddNumberInt padding style
-            txt.Padding = UIUtils.S(new Padding(0, 5, 0, 1));
-            
-            txt.Inner.TextChanged += (s, e) => onChange(txt.Inner.Text);
-            txt.Inner.Leave += (s, e) => onLeave();
-            
-            group.AddItem(new LiteSettingsItem(label, txt));
-        }
-
-        private void LocalAddNumber(LiteSettingsGroup group, string label, int initialVal, Action<int> onChange, Action onLeave, string unit = "")
-        {
-            // Narrower input: 120 width
-            var txt = new LiteUnderlineInput(initialVal.ToString(), unit, "", 120);
-            // Match SettingsPageBase.AddNumberInt padding style
-            txt.Padding = UIUtils.S(new Padding(0, 5, 0, 1));
-            
-            txt.Inner.TextChanged += (s, e) => {
-                if (int.TryParse(txt.Inner.Text, out int val))
-                {
-                    onChange(val);
-                }
-            };
-            txt.Inner.Leave += (s, e) => onLeave();
-            
-            group.AddItem(new LiteSettingsItem(label, txt));
-        }
-
-        private void LocalAddReadOnlyString(LiteSettingsGroup group, string label, string val)
-        {
-            // Narrower input: 120 width
-            var txt = new LiteUnderlineInput(val, "", "", 120);
-            txt.Padding = UIUtils.S(new Padding(0, 5, 0, 1));
-            txt.Inner.ReadOnly = true;
-            txt.Inner.ForeColor = UIColors.TextSub; 
-            txt.Inner.BackColor = Color.FromArgb(245, 245, 245); // Visibly read-only
-            group.AddItem(new LiteSettingsItem(label, txt));
-        }
 
         private void SaveAndRestart(PluginInstanceConfig inst)
         {

@@ -88,7 +88,14 @@ namespace LiteMonitor.src.Core.Plugins
                 {
                     try
                     {
-                        val = Regex.Replace(val, t.Pattern, t.To); // 使用 To 替换匹配项
+                        // [Fix] Resolve template in 'To' field to support dynamic replacement (e.g. "{{ip_district}}")
+                        string replacement = t.To;
+                        if (replacement.Contains("{{")) 
+                        {
+                            replacement = ResolveTemplate(replacement, context);
+                        }
+
+                        val = Regex.Replace(val, t.Pattern, replacement); // 使用 To 替换匹配项
                     }
                     catch { }
                 }
@@ -98,6 +105,11 @@ namespace LiteMonitor.src.Core.Plugins
                     {
                         val = t.Map[val]; // 使用 Map 替换匹配项
                     }
+                }
+                else if (t.Function == "resolve_template")
+                {
+                    // 将当前变量值视为模版，进行解析 (支持动态模版)
+                    val = ResolveTemplate(val, context);
                 }
 
                 context[t.TargetVar] = val;
@@ -118,19 +130,37 @@ namespace LiteMonitor.src.Core.Plugins
             // 简单优化：如果模版不包含 {{ 则直接返回
             if (!template.Contains("{{")) return template;
 
-            var result = template;
-            foreach (var kv in context)
+            // [Refactor] Use Regex MatchEvaluator to support advanced syntax like Fallback (var ?? fallback)
+            return Regex.Replace(template, @"\{\{(.+?)\}\}", m =>
             {
-                result = result.Replace("{{" + kv.Key + "}}", kv.Value);
-            }
-
-            // [Fix] Issue 3: 清理未解析的占位符 (防止 UI 显示 {{xxx}})
-            // 简单的正则匹配 {{...}} 并替换为空，或者保留？
-            // 用户反馈 {auto_city} 这种显示出来很丑，最好替换为 "?" 或空
-            // 使用非贪婪匹配
-            result = Regex.Replace(result, @"\{\{.*?\}\}", "");
-
-            return result;
+                string content = m.Groups[1].Value.Trim();
+                
+                // Handle Fallback Syntax: "var ?? fallback"
+                if (content.Contains("??"))
+                {
+                    var parts = content.Split(new[] { "??" }, StringSplitOptions.RemoveEmptyEntries);
+                    foreach (var part in parts)
+                    {
+                        string key = part.Trim();
+                        // 1. Try context lookup
+                        if (context.TryGetValue(key, out string val) && !string.IsNullOrEmpty(val))
+                        {
+                            return val;
+                        }
+                        // 2. Allow literal fallback if quoted? (Not implemented for simplicity, assume all are keys)
+                    }
+                    return ""; // All fallbacks failed
+                }
+                
+                // Standard Lookup
+                if (context.TryGetValue(content, out string value))
+                {
+                    return value;
+                }
+                
+                // Return empty if not found (clean up unresolved placeholders)
+                return "";
+            });
         }
     }
 }

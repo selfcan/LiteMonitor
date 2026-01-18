@@ -74,6 +74,9 @@ namespace LiteMonitor.src.Core.Plugins
         [JsonPropertyName("placeholder")]
         public string Placeholder { get; set; } = "";
 
+        [JsonPropertyName("options")]
+        public List<PluginInputOption>? Options { get; set; }
+
         // Scope: "global" (default) or "target"
         // global: 整个插件实例共享 (如 API Key)
         // target: 每个目标单独配置 (如 股票代码)
@@ -142,6 +145,9 @@ namespace LiteMonitor.src.Core.Plugins
 
         [JsonPropertyName("cache_minutes")]
         public int CacheMinutes { get; set; } = 0; // 0=No Cache, -1=Forever
+
+        [JsonPropertyName("skip_if_set")]
+        public string SkipIfSet { get; set; } = ""; // If context[SkipIfSet] is present & not empty, skip this step
     }
 
     public class PluginTransform
@@ -182,5 +188,14 @@ namespace LiteMonitor.src.Core.Plugins
 
         [JsonPropertyName("unit")]
         public string Unit { get; set; } = ""; // 单位
+    }
+
+    public class PluginInputOption
+    {
+        [JsonPropertyName("label")]
+        public string Label { get; set; } = "";
+
+        [JsonPropertyName("value")]
+        public string Value { get; set; } = "";
     }
 }
