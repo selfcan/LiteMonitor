@@ -7,7 +7,8 @@ using LiteMonitor.src.SystemServices;
 using LiteMonitor.src.Core;
 using LiteMonitor.src.UI;
 using System.Collections.Generic;
-using System.Diagnostics; // 用于 Process.Start
+using System.Diagnostics;
+using LiteMonitor.src.SystemServices.InfoService; // 用于 Process.Start
 
 namespace LiteMonitor
 {
@@ -374,12 +375,20 @@ namespace LiteMonitor
 
                     // 1. 拼接名称
                     // Full Name: DisplayLabel > Loc(Items.Key) > Key
-                    string full = !string.IsNullOrEmpty(itemConfig.DisplayLabel) ? itemConfig.DisplayLabel : LanguageManager.T(UIUtils.Intern("Items." + itemConfig.Key));
+                    // [Refactor] 优先读取 InfoService 动态 Label
+                    string dynLabel = InfoService.Instance.GetValue("PROP.Label." + itemConfig.Key);
+                    if (string.IsNullOrEmpty(dynLabel)) dynLabel = itemConfig.DynamicLabel; // Fallback
+
+                    string full = !string.IsNullOrEmpty(itemConfig.UserLabel) ? itemConfig.UserLabel : (!string.IsNullOrEmpty(dynLabel) ? dynLabel : LanguageManager.T(UIUtils.Intern("Items." + itemConfig.Key)));
                     if (full.StartsWith("Items.")) full = itemConfig.Key;
                     
                     // Short Name: DisplayTaskbarLabel > Loc(Short.Key) > Key
                     // Note: TaskbarLabel might be " " (hidden), so we check DisplayTaskbarLabel carefully
-                    string shortName = itemConfig.DisplayTaskbarLabel; // Could be " "
+                    string dynShort = InfoService.Instance.GetValue("PROP.ShortLabel." + itemConfig.Key);
+                    if (string.IsNullOrEmpty(dynShort)) dynShort = itemConfig.DynamicTaskbarLabel; // Fallback
+                    
+                    string shortName = !string.IsNullOrEmpty(itemConfig.TaskbarLabel) ? itemConfig.TaskbarLabel : dynShort; // User > Dynamic
+                    
                     if (string.IsNullOrEmpty(shortName) || shortName == " ")
                     {
                          // If hidden or empty, fallback to default localized short name for the menu text

@@ -2,6 +2,7 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 using LiteMonitor.src.Core;
+using LiteMonitor.src.SystemServices.InfoService; // [New]
 
 namespace LiteMonitor.src.UI.Controls
 {
@@ -81,11 +82,15 @@ namespace LiteMonitor.src.UI.Controls
                 var rescue = LiteMonitor.src.Plugins.PluginManager.Instance.TryGetSmartLabel(item.Key);
                 if (!string.IsNullOrEmpty(rescue)) 
                 {
-                    item.DynamicLabel = rescue; // 立即修正内存
+                    item.DynamicLabel = rescue; // 立即修正内存 (Legacy Fallback)
                 }
             }
             
-            string valName = !string.IsNullOrEmpty(item.DisplayLabel) ? item.DisplayLabel : defName;
+            // [Refactor] Calculate Display Label using InfoService
+            string dynLabel = InfoService.Instance.GetValue("PROP.Label." + item.Key);
+            if (string.IsNullOrEmpty(dynLabel)) dynLabel = item.DynamicLabel; // Fallback to legacy
+            
+            string valName = !string.IsNullOrEmpty(item.UserLabel) ? item.UserLabel : (!string.IsNullOrEmpty(dynLabel) ? dynLabel : defName);
             
             _lblName = new Label
             {
@@ -118,8 +123,11 @@ namespace LiteMonitor.src.UI.Controls
                 }
             }
 
-            // [Fix] 优先使用 DisplayTaskbarLabel (TaskbarLabel ?? DynamicTaskbarLabel)
-            string valShort = !string.IsNullOrEmpty(item.DisplayTaskbarLabel) ? item.DisplayTaskbarLabel : defShort;
+            // [Refactor] Calculate Display Short Label using InfoService
+            string dynShort = InfoService.Instance.GetValue("PROP.ShortLabel." + item.Key);
+            if (string.IsNullOrEmpty(dynShort)) dynShort = item.DynamicTaskbarLabel; // Fallback
+            
+            string valShort = !string.IsNullOrEmpty(item.TaskbarLabel) ? item.TaskbarLabel : (!string.IsNullOrEmpty(dynShort) ? dynShort : defShort);
             
             _inputShort = new LiteUnderlineInput(valShort, "", "", 80, UIColors.TextMain) 
             { Location = new Point(MonitorLayout.X_COL2, UIUtils.S(8)), Visible = false };

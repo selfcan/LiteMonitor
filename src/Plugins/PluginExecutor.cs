@@ -14,31 +14,26 @@ namespace LiteMonitor.src.Plugins
     /// <summary>
     /// 插件执行引擎 (Refactored)
     /// 负责执行 API 请求、链式步骤、数据处理和结果注入
-    /// [优化] 线程安全缓存、移除 IO 阻塞、修复参数缓存冲突
     /// </summary>
     public class PluginExecutor
     {
         private readonly HttpClient _http;
-        
-        // [Refactor] In-flight requests for Request Coalescing
         private readonly ConcurrentDictionary<string, Task<string>> _inflightRequests = new();
         
-        // [Refactor] 使用线程安全的字典，防止多线程并发读写导致 Crash
         // Key = InstanceID_StepID_ParamsHash
         private class CacheItem
         {
-            public string RawResponse { get; set; } // [Refactor] Store Raw Response
+            public string RawResponse { get; set; } 
             public DateTime Timestamp { get; set; }
         }
         private readonly ConcurrentDictionary<string, CacheItem> _stepCache = new();
 
-        // 当插件动态修改了 UI 配置（如 Label）时触发
         public event Action OnSchemaChanged;
 
         public PluginExecutor()
         {
             _http = new HttpClient();
-            _http.Timeout = TimeSpan.FromSeconds(10); // 默认超时
+            _http.Timeout = TimeSpan.FromSeconds(10); 
             _http.DefaultRequestHeaders.Add("User-Agent", "LiteMonitor/1.0");
             
             System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
@@ -52,7 +47,6 @@ namespace LiteMonitor.src.Plugins
             }
             else
             {
-                // 清除特定实例的所有缓存
                 var keysToRemove = _stepCache.Keys.Where(k => k.StartsWith(instanceId)).ToList();
                 foreach (var k in keysToRemove) _stepCache.TryRemove(k, out _);
             }
@@ -60,7 +54,6 @@ namespace LiteMonitor.src.Plugins
 
         public async Task ExecuteInstanceAsync(PluginInstanceConfig inst, PluginTemplate tmpl, System.Threading.CancellationToken token = default)
         {
-            // 防御性编程：检查配置有效性
             if (inst == null || tmpl == null) return;
 
             var targets = inst.Targets != null && inst.Targets.Count > 0 ? inst.Targets : new List<Dictionary<string, string>> { new Dictionary<string, string>() };
@@ -70,31 +63,24 @@ namespace LiteMonitor.src.Plugins
             {
                 if (token.IsCancellationRequested) break;
 
-                var idx = i; // Capture loop variable
+                var idx = i; 
                 tasks.Add(Task.Run(async () => 
                 {
                     if (token.IsCancellationRequested) return;
 
-                    // [Optimization] Parallel execution with slight staggered start for rate limiting
                     if (idx > 0) 
                     {
                         try { await Task.Delay(idx * 50, token); } catch (OperationCanceledException) { return; }
                     }
 
                     var mergedInputs = new Dictionary<string, string>(inst.InputValues);
-                    foreach (var kv in targets[idx])
-                    {
-                        mergedInputs[kv.Key] = kv.Value;
-                    }
+                    foreach (var kv in targets[idx]) mergedInputs[kv.Key] = kv.Value;
                     
                     if (tmpl.Inputs != null)
                     {
                         foreach (var input in tmpl.Inputs)
                         {
-                            if (!mergedInputs.ContainsKey(input.Key))
-                            {
-                                mergedInputs[input.Key] = input.DefaultValue;
-                            }
+                            if (!mergedInputs.ContainsKey(input.Key)) mergedInputs[input.Key] = input.DefaultValue;
                         }
                     }
 
@@ -117,27 +103,25 @@ namespace LiteMonitor.src.Plugins
                 if (token.IsCancellationRequested) return;
 
                 string url = PluginProcessor.ResolveTemplate(tmpl.Execution.Url, inputs);
-                string body = tmpl.Execution.Body ?? "";
-                body = PluginProcessor.ResolveTemplate(body, inputs);
+                string body = PluginProcessor.ResolveTemplate(tmpl.Execution.Body ?? "", inputs);
 
                 string resultRaw = "";
+                // Handle legacy execution types by mapping them to steps internally or executing directly
                 if (tmpl.Execution.Type == "api_json" || tmpl.Execution.Type == "api_text")
                 {
-                    var method = (tmpl.Execution.Method?.ToUpper() == "POST") ? HttpMethod.Post : HttpMethod.Get;
-                    var request = new HttpRequestMessage(method, url);
-                    
-                    if (method == HttpMethod.Post && !string.IsNullOrEmpty(body))
+                    // Convert legacy single-request to a "step" concept for consistent execution
+                    var step = new PluginExecutionStep
                     {
-                        request.Content = new StringContent(body, Encoding.UTF8, "application/json");
-                    }
+                        Url = url,
+                        Body = body,
+                        Method = tmpl.Execution.Method,
+                        Headers = tmpl.Execution.Headers,
+                        ResponseEncoding = null 
+                    };
 
-                    if (tmpl.Execution.Headers != null)
-                    {
-                        foreach (var h in tmpl.Execution.Headers) request.Headers.TryAddWithoutValidation(h.Key, h.Value);
-                    }
-                    
-                    var response = await _http.SendAsync(request, token);
-                    resultRaw = await response.Content.ReadAsStringAsync(token);
+                    // Direct fetch (no caching logic for legacy root level yet, or use step logic?)
+                    // For simplicity and backward compatibility, we execute directly here but reuse Fetch helper
+                    resultRaw = await FetchRawAsync(step.Method, url, body, step.Headers, null, token);
                 }
 
                 if (tmpl.Execution.Type == "api_json" || tmpl.Execution.Type == "chain")
@@ -155,22 +139,8 @@ namespace LiteMonitor.src.Plugins
                     }
                     else
                     {
-                        // 尝试解析 JSON，如果失败则捕获异常
-                        using var doc = JsonDocument.Parse(resultRaw);
-                        var root = doc.RootElement;
-                        
-                        if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("error", out var errProp) && errProp.GetBoolean())
-                        {
-                             // 可选：处理 API 返回的逻辑错误
-                        }
-
-                        if (tmpl.Execution.Extract != null)
-                        {
-                            foreach (var v in tmpl.Execution.Extract)
-                            {
-                                inputs[v.Key] = PluginProcessor.ExtractJsonValue(root, v.Value);
-                            }
-                        }
+                        // Legacy api_json processing
+                        ParseAndExtract(resultRaw, tmpl.Execution.Extract, inputs, "json");
                     }
 
                     PluginProcessor.ApplyTransforms(tmpl.Execution.Process, inputs);
@@ -189,7 +159,6 @@ namespace LiteMonitor.src.Plugins
             }
             catch (OperationCanceledException) 
             {
-                // Ignored
             }
             catch (Exception ex)
             {
@@ -209,15 +178,12 @@ namespace LiteMonitor.src.Plugins
                     }
                 }
 
-                // 1. 预解析 URL 和 Body，用于生成精确的 CacheKey
                 string url = PluginProcessor.ResolveTemplate(step.Url, context);
                 string body = PluginProcessor.ResolveTemplate(step.Body ?? "", context);
 
-                // [Fix] 生成包含参数哈希的 CacheKey，彻底解决参数变更后缓存不更新的问题
                 string contentHash = (url + "|" + body).GetHashCode().ToString("X"); 
                 string cacheKey = $"{inst.Id}{keySuffix}_{step.Id}_{contentHash}";
 
-                // 2. 检查缓存
                 bool hit = false;
                 string resultRaw = "";
 
@@ -232,96 +198,57 @@ namespace LiteMonitor.src.Plugins
                         }
                         else
                         {
-                            _stepCache.TryRemove(cacheKey, out _); // Expired
+                            _stepCache.TryRemove(cacheKey, out _); 
                         }
                     }
                 }
 
                 if (!hit)
                 {
-                    // 3. 发起请求 (Only if NOT hit)
-                // [Optimization] Request Coalescing (防止并发请求穿透缓存)
-                // [Fix] Detach the request from the caller's cancellation token to ensure it completes and populates cache
-                // This prevents "Zombie" requests from being cancelled mid-flight during a Reload, which would cause cache misses for the next immediate request.
-                var task = _inflightRequests.GetOrAdd(cacheKey, _ => FetchStepRawAsync(step, url, body, cacheKey, CancellationToken.None));
-                
-                try 
-                {
-                    // We still await it, but we respect the caller's token for waiting
-                    // If caller cancels, we stop waiting, but the background task continues
-                    var tcs = new TaskCompletionSource<string>();
-                    using (token.Register(() => tcs.TrySetCanceled()))
+                    // Request Coalescing
+                    var task = _inflightRequests.GetOrAdd(cacheKey, _ => FetchRawAsync(step.Method, url, body, step.Headers, step.ResponseEncoding, CancellationToken.None));
+                    
+                    try 
                     {
-                        var finishedTask = await Task.WhenAny(task, tcs.Task);
-                        if (finishedTask == tcs.Task) throw new OperationCanceledException(token);
-                        resultRaw = await task;
-                    }
-                }
-                catch (OperationCanceledException)
-                {
-                    // Caller gave up, but FetchStepRawAsync continues in background
-                    throw;
-                }
-                catch (Exception)
-                {
-                    // 如果请求失败，确保从 inflight 中移除（虽然 FetchStepRawAsync 内部也移除了）
-                    _inflightRequests.TryRemove(cacheKey, out _);
-                    throw;
-                }
-                }
+                        // Wait with cancellation support
+                        var tcs = new TaskCompletionSource<string>();
+                        using (token.Register(() => tcs.TrySetCanceled()))
+                        {
+                            var finishedTask = await Task.WhenAny(task, tcs.Task);
+                            if (finishedTask == tcs.Task) throw new OperationCanceledException(token);
+                            resultRaw = await task;
+                        }
 
-                // 4. 解析结果 (Always Run, even if cached)
-                // [Optimization] This ensures that 'Process' logic (which may depend on dynamic settings like 'style')
-                // is re-executed every time, even if the API response is cached.
-                if (step.Extract != null && step.Extract.Count > 0)
-                {
-                    string json = resultRaw.Trim();
-                    string format = step.ResponseFormat?.ToLower() ?? "json";
-                    
-                    if (format == "jsonp")
-                    {
-                        if (json.StartsWith("(") && json.EndsWith(")"))
+                        // Update Cache
+                        if (step.CacheMinutes != 0)
                         {
-                            json = json.Substring(1, json.Length - 2);
+                            _stepCache[cacheKey] = new CacheItem
+                            {
+                                RawResponse = resultRaw,
+                                Timestamp = DateTime.Now
+                            };
                         }
                     }
-                    
-                    if (format == "json" || format == "jsonp")
+                    catch (OperationCanceledException)
                     {
-                        // 简单判断是否是合法 JSON 对象或数组
-                        if (json.StartsWith("{") || json.StartsWith("["))
-                        {
-                            using var doc = JsonDocument.Parse(json);
-                            var root = doc.RootElement;
-                            foreach (var kv in step.Extract)
-                            {
-                                context[kv.Key] = PluginProcessor.ExtractJsonValue(root, kv.Value);
-                            }
-                        }
+                        throw;
                     }
-                    else if (format == "text")
+                    catch (Exception)
                     {
-                        // [New] Support text extraction
-                        foreach (var kv in step.Extract)
-                        {
-                            // If value is "$", extract entire raw text
-                            if (kv.Value == "$")
-                            {
-                                context[kv.Key] = resultRaw; // Don't trim if user wants raw, but resultRaw is already string
-                            }
-                        }
+                        _inflightRequests.TryRemove(cacheKey, out _);
+                        throw;
+                    }
+                    finally
+                    {
+                         _inflightRequests.TryRemove(cacheKey, out _);
                     }
                 }
 
-                // [Fix] Even if Extract is null, we should allow Process to run (e.g. if Process uses previously extracted vars)
-                // BUT current logic applies transforms AFTER extract.
-                // If Extract is null, context is not updated with new data from resultRaw unless we explicitly extract it.
-                // For text format, we usually extract "$" to a var, then process it.
-                // So the above block handles extraction.
+                // Parse
+                ParseAndExtract(resultRaw, step.Extract, context, step.ResponseFormat);
                 
+                // Process
                 PluginProcessor.ApplyTransforms(step.Process, context);
-
-                // 5. 写入缓存 (Deprecated: We now cache RawResponse above)
             }
             catch (OperationCanceledException)
             {
@@ -330,134 +257,131 @@ namespace LiteMonitor.src.Plugins
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Step {step.Id} Error: {ex.Message}");
-                // 抛出异常以中断后续步骤（根据业务逻辑，链式步骤失败通常意味着后续无法进行）
                 throw; 
             }
         }
 
-        private async Task<string> FetchStepRawAsync(PluginExecutionStep step, string url, string body, string cacheKey, System.Threading.CancellationToken token)
+        private async Task<string> FetchRawAsync(string methodStr, string url, string body, Dictionary<string, string> headers, string encoding, System.Threading.CancellationToken token)
         {
-            try
+            var method = (methodStr?.ToUpper() == "POST") ? HttpMethod.Post : HttpMethod.Get;
+            var request = new HttpRequestMessage(method, url);
+            if (method == HttpMethod.Post && !string.IsNullOrEmpty(body))
             {
-                var method = (step.Method?.ToUpper() == "POST") ? HttpMethod.Post : HttpMethod.Get;
-                var request = new HttpRequestMessage(method, url);
-                if (method == HttpMethod.Post && !string.IsNullOrEmpty(body))
-                {
-                    request.Content = new StringContent(body, Encoding.UTF8, "application/json");
-                }
-                if (step.Headers != null)
-                {
-                    foreach (var h in step.Headers) request.Headers.TryAddWithoutValidation(h.Key, h.Value);
-                }
-
-                var response = await _http.SendAsync(request, token);
-                byte[] bytes = await response.Content.ReadAsByteArrayAsync(token);
-                
-                string resultRaw;
-                if (step.ResponseEncoding?.ToLower() == "gbk")
-                {
-                    resultRaw = Encoding.GetEncoding("GBK").GetString(bytes);
-                }
-                else
-                {
-                    resultRaw = Encoding.UTF8.GetString(bytes);
-                }
-
-                // 写入缓存
-                if (step.CacheMinutes != 0)
-                {
-                    _stepCache[cacheKey] = new CacheItem
-                    {
-                        RawResponse = resultRaw,
-                        Timestamp = DateTime.Now
-                    };
-                }
-                
-                return resultRaw;
+                request.Content = new StringContent(body, Encoding.UTF8, "application/json");
             }
-            finally
+            if (headers != null)
             {
-                _inflightRequests.TryRemove(cacheKey, out _);
+                foreach (var h in headers) request.Headers.TryAddWithoutValidation(h.Key, h.Value);
+            }
+
+            var response = await _http.SendAsync(request, token);
+            byte[] bytes = await response.Content.ReadAsByteArrayAsync(token);
+            
+            if (encoding?.ToLower() == "gbk")
+            {
+                return Encoding.GetEncoding("GBK").GetString(bytes);
+            }
+            return Encoding.UTF8.GetString(bytes);
+        }
+
+        private void ParseAndExtract(string resultRaw, Dictionary<string, string> extractRules, Dictionary<string, string> context, string format = "json")
+        {
+            if (extractRules == null || extractRules.Count == 0) return;
+
+            string json = resultRaw.Trim();
+            string fmt = format?.ToLower() ?? "json";
+            
+            if (fmt == "jsonp")
+            {
+                if (json.StartsWith("(") && json.EndsWith(")"))
+                {
+                    json = json.Substring(1, json.Length - 2);
+                }
+            }
+            
+            if (fmt == "json" || fmt == "jsonp")
+            {
+                if (json.StartsWith("{") || json.StartsWith("["))
+                {
+                    using var doc = JsonDocument.Parse(json);
+                    var root = doc.RootElement;
+                    foreach (var kv in extractRules)
+                    {
+                        context[kv.Key] = PluginProcessor.ExtractJsonValue(root, kv.Value);
+                    }
+                }
+            }
+            else if (fmt == "text")
+            {
+                foreach (var kv in extractRules)
+                {
+                    if (kv.Value == "$")
+                    {
+                        context[kv.Key] = resultRaw;
+                    }
+                }
             }
         }
 
         private void ProcessOutputs(PluginInstanceConfig inst, PluginTemplate tmpl, Dictionary<string, string> inputs, string keySuffix)
         {
             bool schemaChanged = false;
-            // 获取单例，无需重新 Load
             var settings = Settings.Load(); 
 
-            // [Optimization] 使用 lock 保护 Settings 集合的修改，防止 UI 线程遍历时 crash
             lock (settings) 
             {
                 foreach (var output in tmpl.Outputs)
                 {
-                    // 1. 注入数值 (Update InfoService)
                     string val = PluginProcessor.ResolveTemplate(output.Format, inputs);
                     string injectKey = inst.Id + keySuffix + "." + output.Key;
                     
                     if (string.IsNullOrEmpty(val)) val = "[Empty]";
                     InfoService.Instance.InjectValue(injectKey, val);
 
-                    // [New] Inject Color State Override
                     if (!string.IsNullOrEmpty(output.Color))
                     {
                         string colorState = PluginProcessor.ResolveTemplate(output.Color, inputs);
                         InfoService.Instance.InjectValue(injectKey + ".Color", colorState);
                     }
 
-                    // 2. 动态更新 Label (Conditional Update)
-                    // [Strategy] "Write-Once" with Auto-Recovery
-                    // - If label is a System Placeholder (e.g. "Weather main"), it means init failed -> Allow Update.
-                    // - If label is User Custom (or already valid) -> Do NOT Update (Preserve user choice).
-                    string itemKey = "DASH." + injectKey;
-                    var item = settings.MonitorItems.FirstOrDefault(x => x.Key == itemKey);
-                    if (item != null)
+                    // Dynamic Label Update Logic
+                    string itemKey = PluginConstants.DASH_PREFIX + injectKey;
+                    
+                    string labelPattern = !string.IsNullOrEmpty(output.Label) ? output.Label : (tmpl.Meta.Name + " " + output.Key);
+                    
+                    string newName = PluginProcessor.ResolveTemplate(labelPattern, inputs);
+                    string newShort = PluginProcessor.ResolveTemplate(output.ShortLabel ?? "", inputs);
+                    
+                    // Apply default values for missing inputs in labels
+                    if (tmpl.Inputs != null)
                     {
-                        string labelPattern = output.Label;
-                        if (string.IsNullOrEmpty(labelPattern)) labelPattern = (tmpl.Meta.Name) + " " + output.Key;
-                        
-                        string newName = PluginProcessor.ResolveTemplate(labelPattern, inputs);
-                        string newShort = PluginProcessor.ResolveTemplate(output.ShortLabel ?? "", inputs);
-                        
-                        if (tmpl.Inputs != null)
+                        foreach (var input in tmpl.Inputs)
                         {
-                            foreach (var input in tmpl.Inputs)
+                            if (!inputs.ContainsKey(input.Key))
                             {
-                                if (!inputs.ContainsKey(input.Key))
-                                {
-                                    newName = newName.Replace("{{" + input.Key + "}}", input.DefaultValue);
-                                    newShort = newShort.Replace("{{" + input.Key + "}}", input.DefaultValue);
-                                }
+                                newName = newName.Replace("{{" + input.Key + "}}", input.DefaultValue);
+                                newShort = newShort.Replace("{{" + input.Key + "}}", input.DefaultValue);
                             }
                         }
-
-                        // [Scientific Fix] 分离状态与配置
-                        // 1. 始终更新 DynamicLabel (内存状态)
-                        // 2. 绝不触碰 UserLabel (用户配置)
-                        
-                        if (item.DynamicLabel != newName)
-                        {
-                            item.DynamicLabel = newName;
-                            // 只有当 UserLabel 为空(自动模式)时，DynamicLabel 的变化才需要通知 UI 重绘
-                            if (string.IsNullOrEmpty(item.UserLabel)) schemaChanged = true;
-                        }
-                        
-                        // [Scientific Fix] ShortLabel 也采用分离逻辑
-                        if (item.DynamicTaskbarLabel != newShort)
-                        {
-                            item.DynamicTaskbarLabel = newShort;
-                            if (string.IsNullOrEmpty(item.TaskbarLabel)) schemaChanged = true;
-                        }
                     }
+
+                    // [Refactor] Decouple from Settings.MonitorItems
+                    // Instead of modifying Settings directly (SRP Violation & Race Condition),
+                    // we inject the dynamic labels into InfoService as properties.
+                    // The UI (MetricItem) will read these properties at runtime.
+                    InfoService.Instance.InjectValue("PROP.Label." + itemKey, newName);
+                    InfoService.Instance.InjectValue("PROP.ShortLabel." + itemKey, newShort);
+                    
+                    // Notify schema change only if this is the first time we see this item 
+                    // or if significant change happens (Optional, maybe not needed if UI binds to InfoService)
+                    // For now, we assume UI refreshes periodically or on specific events.
+                    // If we need to trigger a full layout rebuild, we might need an event, 
+                    // but standard label text updates are handled by invalidating the control.
                 }
             }
             
-            if (schemaChanged)
-            {
-                OnSchemaChanged?.Invoke();
-            }
-
+            // Removed direct Settings modification logic
+            // OnSchemaChanged?.Invoke(); // Only needed if structure changes (Add/Remove), not for label updates
         }
 
         private void HandleExecutionError(PluginInstanceConfig inst, PluginTemplate tmpl, string keySuffix, Exception ex)
@@ -467,7 +391,7 @@ namespace LiteMonitor.src.Plugins
                 foreach(var o in tmpl.Outputs) 
                 {
                     string injectKey = inst.Id + keySuffix + "." + o.Key;
-                    InfoService.Instance.InjectValue(injectKey, "Err");
+                    InfoService.Instance.InjectValue(injectKey, PluginConstants.STATUS_ERROR);
                 }
             }
             System.Diagnostics.Debug.WriteLine($"Plugin exec error ({inst.Id}): {ex.Message}");

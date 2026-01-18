@@ -30,13 +30,22 @@ namespace LiteMonitor
         {
             get 
             {
-                // [核心逻辑] 如果绑定了 Config，优先读取 Config 中的 DisplayLabel
-                // 这样插件更新 DynamicLabel 或用户更新 UserLabel 后，这里无需任何操作即可读到最新值
-                if (BoundConfig != null)
+                // [核心逻辑] 优先读取用户配置
+                if (BoundConfig != null && !string.IsNullOrEmpty(BoundConfig.UserLabel))
                 {
-                    // 注意：这里使用 DisplayLabel (UserLabel ?? DynamicLabel)
-                    if (!string.IsNullOrEmpty(BoundConfig.DisplayLabel)) return BoundConfig.DisplayLabel;
+                    return BoundConfig.UserLabel;
                 }
+
+                // [Refactor] 尝试从 InfoService 读取动态 Label (由 PluginExecutor 注入)
+                string dynLabel = InfoService.Instance.GetValue("PROP.Label." + Key);
+                if (!string.IsNullOrEmpty(dynLabel)) return dynLabel;
+
+                // 兼容旧逻辑：Config 中的 DynamicLabel
+                if (BoundConfig != null && !string.IsNullOrEmpty(BoundConfig.DynamicLabel))
+                {
+                    return BoundConfig.DynamicLabel;
+                }
+
                 return _label;
             }
             set => _label = UIUtils.Intern(value);
@@ -47,10 +56,20 @@ namespace LiteMonitor
         {
             get 
             {
-                if (BoundConfig != null)
+                if (BoundConfig != null && !string.IsNullOrEmpty(BoundConfig.TaskbarLabel))
                 {
-                    if (!string.IsNullOrEmpty(BoundConfig.DisplayTaskbarLabel)) return BoundConfig.DisplayTaskbarLabel;
+                    return BoundConfig.TaskbarLabel;
                 }
+
+                // [Refactor] 尝试从 InfoService 读取动态 ShortLabel
+                string dynShort = InfoService.Instance.GetValue("PROP.ShortLabel." + Key);
+                if (!string.IsNullOrEmpty(dynShort)) return dynShort;
+
+                if (BoundConfig != null && !string.IsNullOrEmpty(BoundConfig.DynamicTaskbarLabel))
+                {
+                    return BoundConfig.DynamicTaskbarLabel;
+                }
+
                 return _shortLabel;
             }
             set => _shortLabel = UIUtils.Intern(value);

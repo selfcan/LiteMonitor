@@ -451,7 +451,14 @@ namespace LiteMonitor.src.UI.SettingsPage
 
         private List<MonitorItemConfig> GetLCS(List<MonitorItemConfig> list1, List<MonitorItemConfig> list2)
         {
+            // Fast Path: 如果两列表完全一致，直接返回
+            if (list1.Count == list2.Count && list1.SequenceEqual(list2))
+                return new List<MonitorItemConfig>(list1);
+
             int n = list1.Count; int m = list2.Count;
+            // 简单长度检查，避免极端情况
+            if (n == 0 || m == 0) return new List<MonitorItemConfig>();
+
             int[,] dp = new int[n + 1, m + 1];
             for (int i = 1; i <= n; i++) {
                 for (int j = 1; j <= m; j++) {

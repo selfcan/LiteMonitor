@@ -42,7 +42,6 @@ namespace LiteMonitor.src.UI.SettingsPage
             _container.SuspendLayout();
             
             // Dispose old controls to prevent GDI handle leaks
-            // Win32 Parent Window Error occurs if we just Clear() without disposing
             while (_container.Controls.Count > 0)
             {
                 var ctrl = _container.Controls[0];
@@ -53,15 +52,13 @@ namespace LiteMonitor.src.UI.SettingsPage
             var templates = PluginManager.Instance.GetAllTemplates();
             var instances = Settings.Load().PluginInstances;
 
-            // 1. Hint Note (Standard LiteNote)
+            // 1. Hint Note
             var hint = new LiteNote("⚠️说明：如需修改插件监控目标的显示名称、单位或排序，请前往 [监控项显示] 设置页面");
             hint.Dock = DockStyle.Top;
-            // Matches MainPanelPage wrapper padding style roughly
             var hintWrapper = new Panel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(0, 0, 0, 20) };
             hintWrapper.Controls.Add(hint);
             _container.Controls.Add(hintWrapper);
             
-
             if (instances == null || instances.Count == 0)
             {
                 var lbl = new Label { 
@@ -100,8 +97,7 @@ namespace LiteMonitor.src.UI.SettingsPage
             string title = $"{tmpl.Meta.Name} v{tmpl.Meta.Version} (ID: {inst.Id}) by: {tmpl.Meta.Author}";
             var group = new LiteSettingsGroup(title);
 
-            // 1. Description & Actions (Header Panel)
-            // Use LiteSettingsGroup's built-in header action support
+            // 1. Header Actions
             if (isDefault)
             {
                 var linkCopy = new LiteLink(LanguageManager.T("Menu.Copy") == "Menu.Copy" ? "复制副本" : LanguageManager.T("Menu.Copy"), () => CopyInstance(inst));
@@ -111,26 +107,17 @@ namespace LiteMonitor.src.UI.SettingsPage
             {
                 var linkDel = new LiteLink(LanguageManager.T("Menu.Delete") == "Menu.Delete" ? "删除插件" : LanguageManager.T("Menu.Delete"), () => DeleteInstance(inst));
                 linkDel.ForeColor = Color.IndianRed;
-                // Override hover color for delete
                 linkDel.SetColor(Color.IndianRed, Color.Red);
                 group.AddHeaderAction(linkDel);
             }
 
-            // Description as a note below header (if needed) or merged?
-            // The previous LiteActionHeader displayed description as title.
-            // But LiteSettingsGroup already has a title.
-            // Let's add the description as a LiteNote if it's different from title, or just ignore if it's redundant.
-            // The user's original request was "PluginPage UI refactoring".
-            // The previous code put description in LiteActionHeader title.
-            // But LiteSettingsGroup title is "Name v1.0 ...".
-            // If description is useful, we add it as a Note.
             if (!string.IsNullOrEmpty(tmpl.Meta.Description))
             {
                  var note = new LiteNote(tmpl.Meta.Description);
                  group.AddFullItem(note);
             }
 
-            // 2. Enable Switch (Label = Plugin Name)
+            // 2. Enable Switch
             AddBool(group, tmpl.Meta.Name, 
                 () => inst.Enabled, 
                 v => {
@@ -141,7 +128,7 @@ namespace LiteMonitor.src.UI.SettingsPage
                 }
             );
 
-            // 3. Refresh Rate (Replaces ID Input)
+            // 3. Refresh Rate
             AddNumberInt(group, "刷新频率", "s", 
                 () => inst.CustomInterval > 0 ? inst.CustomInterval : tmpl.Execution.Interval,
                 v => {
@@ -172,45 +159,15 @@ namespace LiteMonitor.src.UI.SettingsPage
                 );
             }
 
-            // 5. Targets Section (Only if plugin has target inputs)
+            // 5. Targets Section
             if (targetInputs.Count > 0)
             {
-                 // Auto-Migrate: If Targets is empty but we have values in InputValues for target inputs
-                if ((inst.Targets == null || inst.Targets.Count == 0))
-                {
-                    var legacyTarget = new Dictionary<string, string>();
-                    bool hasLegacy = false;
-                    foreach (var tInput in targetInputs)
-                    {
-                        if (inst.InputValues.ContainsKey(tInput.Key))
-                        {
-                            legacyTarget[tInput.Key] = inst.InputValues[tInput.Key];
-                            inst.InputValues.Remove(tInput.Key); // Remove from global
-                            hasLegacy = true;
-                        }
-                    }
-                    
-                    if (hasLegacy)
-                    {
-                        inst.Targets = new List<Dictionary<string, string>> { legacyTarget };
-                        Settings.Load().Save(); // Save migration
-                    }
-                }
-
-                // // Header for Targets
-                // var targetsHeader = new LiteNote("--- 监控目标列表 ---");
-                // targetsHeader.Padding = new Padding(0, 10, 0, 5);
-                // group.AddFullItem(targetsHeader);
-
                 if (inst.Targets == null) inst.Targets = new List<Dictionary<string, string>>();
                 
                 for (int i = 0; i < inst.Targets.Count; i++)
                 {
                     int index = i; 
                     var targetVals = inst.Targets[i];
-                    
-                    // Target Header
-                    // Use LiteSettingsItem to display Title + Remove Link
                     
                     // Remove Action
                     var linkRem = new LiteLink("移除", () => {
@@ -220,14 +177,13 @@ namespace LiteMonitor.src.UI.SettingsPage
                     });
                     linkRem.SetColor(Color.IndianRed, Color.Red);
 
-                    // [Logic] Prevent removing the last target
+                    // Prevent removing the last target
                     if (inst.Targets.Count <= 1)
                     {
                         linkRem.Enabled = false;
                     }
 
                     var headerItem = new LiteSettingsItem($"# 监控目标 {index + 1}", linkRem);
-                    // Customize style to look like a sub-header
                     headerItem.Label.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold);
                     headerItem.Label.ForeColor = UIColors.Primary;
                     
@@ -268,9 +224,8 @@ namespace LiteMonitor.src.UI.SettingsPage
                 }
 
                 // Add Target Button
-                var btnAdd = new LiteButton("+ 添加新监控目标", false, true); // Dashed style
+                var btnAdd = new LiteButton("+ 添加新监控目标", false, true); 
                 btnAdd.Click += (s, e) => {
-                    // Pre-fill with default values
                     var newTarget = new Dictionary<string, string>();
                     if (targetInputs != null)
                     {
@@ -280,13 +235,11 @@ namespace LiteMonitor.src.UI.SettingsPage
                         }
                     }
                     inst.Targets.Add(newTarget);
-                    // [Optimization] Do not trigger Save/Restart immediately to avoid empty requests
-                    // SaveAndRestart(inst); 
+                    // Do not trigger Save/Restart immediately
                     RebuildUI();
                 };
                 
                 group.AddFullItem(btnAdd);
-                // [Fix] Manually override margin after AddFullItem resets it to create space
                 btnAdd.Margin = UIUtils.S(new Padding(0, 15, 0, 0));
             }
 
@@ -295,16 +248,11 @@ namespace LiteMonitor.src.UI.SettingsPage
 
         private void AddGroupToPage(LiteSettingsGroup group)
         {
-            // Copied from MainPanelPage.cs
             var wrapper = new Panel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(0, 0, 0, 20) };
             wrapper.Controls.Add(group);
             _container.Controls.Add(wrapper);
             _container.Controls.SetChildIndex(wrapper, 0);
         }
-
-        // =================================================================================
-        // Local Helpers (Mimic SettingsPageBase but without persistent _loadActions)
-        // =================================================================================
 
         private void SaveAndRestart(PluginInstanceConfig inst)
         {
@@ -335,11 +283,9 @@ namespace LiteMonitor.src.UI.SettingsPage
             Settings.Load().PluginInstances.Add(newInst);
             Settings.Load().Save();
             
-            // SyncMonitorItem needs to be called to create the DASH item in Settings.MonitorItems
-            PluginManager.Instance.SyncMonitorItem(newInst);
-            Settings.Load().Save(); // Ensure the new MonitorItem is saved to disk
+            // 使用 RestartInstance 来处理同步和启动
+            PluginManager.Instance.RestartInstance(newInst.Id);
             
-            // RebuildUI to show the new group
             RebuildUI();
         }
 
