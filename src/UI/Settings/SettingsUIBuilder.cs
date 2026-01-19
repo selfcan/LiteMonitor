@@ -1,0 +1,253 @@
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Linq;
+using System.Windows.Forms;
+using LiteMonitor.src.Core;
+using LiteMonitor.src.UI.Controls;
+
+namespace LiteMonitor.src.UI.SettingsPage
+{
+    /// <summary>
+    /// UI Builder Extension Methods
+    /// Provides a fluent API for building settings UI
+    /// </summary>
+    public static class SettingsUIBuilder
+    {
+        // =============================================================
+        //  Basic Inputs
+        // =============================================================
+
+        /// <summary>
+        /// Adds a toggle switch (LiteCheck)
+        /// </summary>
+        public static LiteCheck AddToggle(this LiteSettingsGroup group, SettingsPageBase page, string titleKey, Func<bool> get, Action<bool> set)
+        {
+            var chk = new LiteCheck(get(), LanguageManager.T("Menu.Enable"));
+            
+            // Deferred binding: Register action to read value on Save
+            page.RegisterDelaySave(() => set(chk.Checked));
+            
+            group.AddItem(new LiteSettingsItem(LanguageManager.T(titleKey), chk));
+            return chk;
+        }
+
+        /// <summary>
+        /// Adds a string input (LiteUnderlineInput)
+        /// </summary>
+        public static LiteUnderlineInput AddInput(this LiteSettingsGroup group, SettingsPageBase page, string titleKey, Func<string> get, Action<string> set, string placeholder = "", HorizontalAlignment align = HorizontalAlignment.Left)
+        {
+            var input = new LiteUnderlineInput(get(), "", "", 100, null, align);
+            if (!string.IsNullOrEmpty(placeholder)) input.Placeholder = placeholder;
+
+            // Deferred binding
+            page.RegisterDelaySave(() => set(input.Inner.Text));
+            
+            group.AddItem(new LiteSettingsItem(LanguageManager.T(titleKey), input));
+            return input;
+        }
+
+        /// <summary>
+        /// Adds an integer input
+        /// </summary>
+        public static LiteNumberInput AddInt(this LiteSettingsGroup group, SettingsPageBase page, string titleKey, string unit, Func<int> get, Action<int> set, int width = 60, Color? color = null)
+        {
+            var input = new LiteNumberInput(get().ToString(), unit, "", width, color);
+            input.Padding = UIUtils.S(new Padding(0, 5, 0, 1)); // Fix vertical alignment
+
+            // Deferred binding with validation
+            page.RegisterDelaySave(() => 
+            {
+                if (int.TryParse(input.Inner.Text, out int val))
+                    set(val);
+            });
+            
+            group.AddItem(new LiteSettingsItem(LanguageManager.T(titleKey), input));
+            return input;
+        }
+
+        /// <summary>
+        /// Adds a double/float input
+        /// </summary>
+        public static LiteNumberInput AddDouble(this LiteSettingsGroup group, SettingsPageBase page, string titleKey, string unit, Func<double> get, Action<double> set, int width = 70)
+        {
+            var input = new LiteNumberInput(get().ToString(), unit, "", width);
+            input.Padding = UIUtils.S(new Padding(0, 5, 0, 1));
+
+            // Deferred binding
+            page.RegisterDelaySave(() => 
+            {
+                if (double.TryParse(input.Inner.Text, out double val))
+                    set(val);
+            });
+            
+            group.AddItem(new LiteSettingsItem(LanguageManager.T(titleKey), input));
+            return input;
+        }
+
+        /// <summary>
+        /// Adds a color picker
+        /// </summary>
+        public static LiteColorInput AddColor(this LiteSettingsGroup group, SettingsPageBase page, string titleKey, Func<string> get, Action<string> set)
+        {
+            var input = new LiteColorInput(get());
+            input.Input.Padding = UIUtils.S(new Padding(0, 5, 0, 1));
+
+            // Deferred binding
+            page.RegisterDelaySave(() => set(input.HexValue));
+            
+            group.AddItem(new LiteSettingsItem(LanguageManager.T(titleKey), input));
+            return input;
+        }
+
+        // =============================================================
+        //  ComboBoxes
+        // =============================================================
+
+        /// <summary>
+        /// Adds a ComboBox for a list of strings
+        /// </summary>
+        public static LiteComboBox AddCombo(this LiteSettingsGroup group, SettingsPageBase page, string titleKey, IEnumerable<string> items, Func<string> get, Action<string> set)
+        {
+            var cmb = new LiteComboBox();
+            foreach (var i in items) cmb.Items.Add(i);
+            
+            // Initial selection
+            string current = get();
+            if (cmb.Items.Contains(current)) cmb.SelectedItem = current;
+            else if (cmb.Items.Count > 0) cmb.SelectedIndex = 0;
+
+            // Deferred binding
+            page.RegisterDelaySave(() => set(cmb.Text));
+            
+            // Auto-width logic
+            AttachAutoWidth(cmb);
+
+            group.AddItem(new LiteSettingsItem(LanguageManager.T(titleKey), cmb));
+            return cmb;
+        }
+
+        /// <summary>
+        /// Adds a ComboBox for an index-based selection
+        /// </summary>
+        public static LiteComboBox AddComboIndex(this LiteSettingsGroup group, SettingsPageBase page, string titleKey, IEnumerable<string> items, Func<int> get, Action<int> set)
+        {
+            var cmb = new LiteComboBox();
+            foreach (var i in items) cmb.Items.Add(i);
+
+            int idx = get();
+            if (idx >= 0 && idx < cmb.Items.Count) cmb.SelectedIndex = idx;
+
+            // Deferred binding
+            page.RegisterDelaySave(() => set(cmb.SelectedIndex));
+            AttachAutoWidth(cmb);
+
+            group.AddItem(new LiteSettingsItem(LanguageManager.T(titleKey), cmb));
+            return cmb;
+        }
+
+        /// <summary>
+        /// Adds a ComboBox for dynamic key-value pairs
+        /// </summary>
+        public static LiteComboBox AddComboPair(this LiteSettingsGroup group, SettingsPageBase page, string title, IEnumerable<dynamic> options, Func<string> get, Action<string> set)
+        {
+            var cmb = new LiteComboBox();
+            foreach (var opt in options)
+            {
+                string label = "";
+                string val = "";
+                
+                // Reflection to get Label/Value
+                Type t = opt.GetType();
+                var pLabel = t.GetProperty("Label");
+                var pValue = t.GetProperty("Value");
+                
+                if (pLabel != null) label = pLabel.GetValue(opt)?.ToString();
+                if (pValue != null) val = pValue.GetValue(opt)?.ToString();
+                
+                cmb.AddItem(label, val);
+            }
+
+            cmb.SelectValue(get());
+            // Deferred binding
+            page.RegisterDelaySave(() => set(cmb.SelectedValue));
+            AttachAutoWidth(cmb);
+
+            group.AddItem(new LiteSettingsItem(title, cmb));
+            return cmb;
+        }
+
+        private static void AttachAutoWidth(LiteComboBox cmb)
+        {
+            cmb.Inner.DropDown += (s, e) =>
+            {
+                var box = (ComboBox)s;
+                int maxWidth = box.Width;
+                int scrollBarWidth = SystemInformation.VerticalScrollBarWidth;
+
+                foreach (var item in box.Items)
+                {
+                    if (item == null) continue;
+                    int w = TextRenderer.MeasureText(item.ToString(), box.Font).Width + scrollBarWidth + 10;
+                    if (w > maxWidth) maxWidth = w;
+                }
+                box.DropDownWidth = maxWidth;
+            };
+        }
+
+        // =============================================================
+        //  Advanced / Composite Rows
+        // =============================================================
+
+        /// <summary>
+        /// Adds a specialized Action Row (Label + Control on Right)
+        /// </summary>
+        public static LiteActionRow AddAction(this LiteSettingsGroup group, string title, Control rightControl)
+        {
+            var row = new LiteActionRow(title, rightControl);
+            group.AddFullItem(row);
+            return row;
+        }
+
+        /// <summary>
+        /// Shortcut for Action Row with a Button
+        /// </summary>
+        public static LiteActionRow AddButton(this LiteSettingsGroup group, string title, string btnText, Action onClick, bool isPrimary = false)
+        {
+            var btn = new LiteButton(btnText, isPrimary);
+            btn.Click += (s, e) => onClick?.Invoke();
+            return group.AddAction(title, btn);
+        }
+
+        /// <summary>
+        /// Shortcut for Action Row with a Link
+        /// </summary>
+        public static LiteActionRow AddLink(this LiteSettingsGroup group, string title, string linkText, Action onClick)
+        {
+            var link = new LiteLink(linkText, onClick);
+            // Add padding for better alignment
+            link.Padding = new Padding(0, 5, 5, 0); 
+            return group.AddAction(title, link);
+        }
+
+        /// <summary>
+        /// Adds a Threshold Row (Warn -> Crit)
+        /// </summary>
+        public static LiteThresholdRow AddThreshold(this LiteSettingsGroup group, SettingsPageBase page, string title, string unit, ValueRange range)
+        {
+            var row = new LiteThresholdRow(page, title, unit, range);
+            group.AddFullItem(row);
+            return row;
+        }
+
+        /// <summary>
+        /// Adds a Hint/Note Row
+        /// </summary>
+        public static LiteHintRow AddHint(this LiteSettingsGroup group, string text, int indent = 0)
+        {
+            var row = new LiteHintRow(text, indent);
+            group.AddFullItem(row);
+            return row;
+        }
+    }
+}

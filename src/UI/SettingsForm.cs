@@ -11,6 +11,10 @@ namespace LiteMonitor.src.UI
 {
     public class SettingsForm : Form
     {
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        public static extern int SendMessage(IntPtr hWnd, int wMsg, bool wParam, int lParam);
+        private const int WM_SETREDRAW = 11;
+
         private Settings _cfg;
         private UIController _ui;
         private MainForm _mainForm;
@@ -180,7 +184,7 @@ namespace LiteMonitor.src.UI
             {
                 // ★★★ 核心修复开始 ★★★
                 
-                // 1. 挂起父容器布局：告诉系统“在我操作完之前，千万不要重绘”
+                // 1. 挂起布局
                 _pnlContent.SuspendLayout(); 
                 
                 try 
@@ -190,17 +194,20 @@ namespace LiteMonitor.src.UI
                     
                     // 2. 关键技：手动预设尺寸
                     // 在 Dock 生效前，先强制把它设为和父容器一样大。
-                    // 这样即使 Layout 有微小延迟，肉眼看到的也是填满的状态。
                     _currentPage.Size = _pnlContent.ClientSize; 
-                    _currentPage.Dock = DockStyle.Fill; // 双保险
+                    _currentPage.Dock = DockStyle.Fill; 
 
-                    _currentPage.OnShow();
                     _pnlContent.Controls.Add(_currentPage);
+                    
+                    // 3. 显示页面
+                    // ★★★ Fix: Removed WM_SETREDRAW locking which caused "Win32 Parent" crashes on some systems
+                    _currentPage.OnShow();
                 }
                 finally
                 {
-                    // 3. 恢复布局：此时控件大小已正确，系统一次性绘制最终画面
+                    // 4. 恢复布局
                     _pnlContent.ResumeLayout(); 
+                    // _pnlContent.Refresh(); // Optional, ResumeLayout usually triggers paint
                 }
                 // ★★★ 核心修复结束 ★★★
             }

@@ -16,12 +16,10 @@ namespace LiteMonitor.src.UI.SettingsPage
 
         public PluginPage()
         {
-            // Strictly follow MainPanelPage layout
             this.BackColor = UIColors.MainBg;
             this.Dock = DockStyle.Fill;
             this.Padding = new Padding(0);
 
-            // MainPanelPage uses 20 padding.
             _container = new BufferedPanel 
             { 
                 Dock = DockStyle.Fill, 
@@ -33,24 +31,24 @@ namespace LiteMonitor.src.UI.SettingsPage
 
         public override void OnShow()
         {
-            base.OnShow(); // Execute any base load actions
-            RebuildUI();
+            base.OnShow();
+            if (!_isLoaded)
+            {
+                RebuildUI();
+                _isLoaded = true;
+            }
         }
+
+        private bool _isLoaded = false;
 
         private void RebuildUI()
         {
             _container.SuspendLayout();
-            
-            // Dispose old controls to prevent GDI handle leaks
-            while (_container.Controls.Count > 0)
-            {
-                var ctrl = _container.Controls[0];
-                _container.Controls.RemoveAt(0);
-                ctrl.Dispose();
-            }
+            ClearAndDispose(_container.Controls);
 
             var templates = PluginManager.Instance.GetAllTemplates();
-            var instances = Settings.Load().PluginInstances;
+            // Use Config instead of Settings.Load() to ensure consistency with SettingsForm context
+            var instances = Config?.PluginInstances ?? Settings.Load().PluginInstances;
 
             // 1. Hint Note
             var hint = new LiteNote("⚠️说明：如需修改插件监控目标的显示名称、单位或排序，请前往 [监控项显示] 设置页面");
@@ -93,7 +91,6 @@ namespace LiteMonitor.src.UI.SettingsPage
 
         private void CreatePluginGroup(PluginInstanceConfig inst, PluginTemplate tmpl, bool isDefault)
         {
-            // Title: Name + Version + Author + ID
             string title = $"{tmpl.Meta.Name} v{tmpl.Meta.Version} (ID: {inst.Id}) by: {tmpl.Meta.Author}";
             var group = new LiteSettingsGroup(title);
 
@@ -113,12 +110,11 @@ namespace LiteMonitor.src.UI.SettingsPage
 
             if (!string.IsNullOrEmpty(tmpl.Meta.Description))
             {
-                 var note = new LiteNote(tmpl.Meta.Description);
-                 group.AddFullItem(note);
+                 group.AddHint(tmpl.Meta.Description);
             }
 
             // 2. Enable Switch
-            AddBool(group, tmpl.Meta.Name, 
+            group.AddToggle(this, tmpl.Meta.Name, 
                 () => inst.Enabled, 
                 v => {
                     if (inst.Enabled != v) {
@@ -129,7 +125,7 @@ namespace LiteMonitor.src.UI.SettingsPage
             );
 
             // 3. Refresh Rate
-            AddNumberInt(group, "刷新频率", "s", 
+            group.AddInt(this, "刷新频率", "s", 
                 () => inst.CustomInterval > 0 ? inst.CustomInterval : tmpl.Execution.Interval,
                 v => {
                     if (inst.CustomInterval != v) {
@@ -146,7 +142,7 @@ namespace LiteMonitor.src.UI.SettingsPage
             // 4. Global Inputs
             foreach (var input in globalInputs)
             {
-                AddString(group, input.Label, 
+                group.AddInput(this, input.Label, 
                     () => inst.InputValues.ContainsKey(input.Key) ? inst.InputValues[input.Key] : input.DefaultValue,
                     v => {
                         string old = inst.InputValues.ContainsKey(input.Key) ? inst.InputValues[input.Key] : input.DefaultValue;
@@ -164,6 +160,17 @@ namespace LiteMonitor.src.UI.SettingsPage
             {
                 if (inst.Targets == null) inst.Targets = new List<Dictionary<string, string>>();
                 
+                // Ensure at least one target exists for UI display
+                if (inst.Targets.Count == 0)
+                {
+                    var defaultTarget = new Dictionary<string, string>();
+                    foreach(var input in targetInputs)
+                    {
+                        defaultTarget[input.Key] = input.DefaultValue;
+                    }
+                    inst.Targets.Add(defaultTarget);
+                }
+                
                 for (int i = 0; i < inst.Targets.Count; i++)
                 {
                     int index = i; 
@@ -177,7 +184,6 @@ namespace LiteMonitor.src.UI.SettingsPage
                     });
                     linkRem.SetColor(Color.IndianRed, Color.Red);
 
-                    // Prevent removing the last target
                     if (inst.Targets.Count <= 1)
                     {
                         linkRem.Enabled = false;
@@ -195,7 +201,7 @@ namespace LiteMonitor.src.UI.SettingsPage
                         
                         if (input.Type == "select" && input.Options != null)
                         {
-                            AddComboPair(group, "  " + input.Label, input.Options,
+                            group.AddComboPair(this, "  " + input.Label, input.Options,
                                 () => targetVals.ContainsKey(input.Key) ? targetVals[input.Key] : input.DefaultValue,
                                 v => {
                                     string old = targetVals.ContainsKey(input.Key) ? targetVals[input.Key] : input.DefaultValue;
@@ -208,7 +214,7 @@ namespace LiteMonitor.src.UI.SettingsPage
                         }
                         else
                         {
-                            AddString(group, "  " + input.Label, 
+                            group.AddInput(this, "  " + input.Label, 
                                 () => targetVals.ContainsKey(input.Key) ? targetVals[input.Key] : input.DefaultValue,
                                 v => {
                                     string old = targetVals.ContainsKey(input.Key) ? targetVals[input.Key] : input.DefaultValue;
@@ -217,7 +223,8 @@ namespace LiteMonitor.src.UI.SettingsPage
                                         SaveAndRestart(inst);
                                     }
                                 }, 
-                                input.Placeholder
+                                input.Placeholder,
+                                HorizontalAlignment.Center // ★ Center alignment for target inputs
                             );
                         }
                     }
@@ -235,7 +242,6 @@ namespace LiteMonitor.src.UI.SettingsPage
                         }
                     }
                     inst.Targets.Add(newTarget);
-                    // Do not trigger Save/Restart immediately
                     RebuildUI();
                 };
                 
@@ -250,13 +256,24 @@ namespace LiteMonitor.src.UI.SettingsPage
         {
             var wrapper = new Panel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(0, 0, 0, 20) };
             wrapper.Controls.Add(group);
+            
+            // ★★★ Fix for "Cannot set Win32 parent" Crash ★★★
+            // The crash occurs because we are adding controls to _container while its parent (SettingsForm._pnlContent) 
+            // has layout suspended (WM_SETREDRAW=false). When adding deep hierarchies (PluginPage -> Panel -> LiteSettingsGroup -> Panel -> Controls),
+            // WinForms sometimes fails to resolve the HWND chain correctly if the root is not painting.
+            
+            // By adding to _container directly, we ensure the control tree is built. 
+            // The parent handle should be valid because SettingsForm adds PluginPage BEFORE calling OnShow.
+            
             _container.Controls.Add(wrapper);
             _container.Controls.SetChildIndex(wrapper, 0);
         }
 
         private void SaveAndRestart(PluginInstanceConfig inst)
         {
-            Settings.Load().Save();
+            if (Config != null) Config.Save();
+            else Settings.Load().Save();
+
             PluginManager.Instance.RestartInstance(inst.Id);
         }
 
@@ -271,7 +288,6 @@ namespace LiteMonitor.src.UI.SettingsPage
                 CustomInterval = source.CustomInterval
             };
             
-            // Copy Targets
             if (source.Targets != null)
             {
                  foreach(var t in source.Targets)
@@ -280,10 +296,17 @@ namespace LiteMonitor.src.UI.SettingsPage
                  }
             }
 
-            Settings.Load().PluginInstances.Add(newInst);
-            Settings.Load().Save();
+            if (Config != null)
+            {
+                Config.PluginInstances.Add(newInst);
+                Config.Save();
+            }
+            else
+            {
+                Settings.Load().PluginInstances.Add(newInst);
+                Settings.Load().Save();
+            }
             
-            // 使用 RestartInstance 来处理同步和启动
             PluginManager.Instance.RestartInstance(newInst.Id);
             
             RebuildUI();
@@ -293,8 +316,17 @@ namespace LiteMonitor.src.UI.SettingsPage
         {
             if (MessageBox.Show("确定要删除此插件副本吗？", "确认", MessageBoxButtons.YesNo) == DialogResult.Yes)
             {
-                Settings.Load().PluginInstances.Remove(inst);
-                Settings.Load().Save();
+                if (Config != null)
+                {
+                    Config.PluginInstances.Remove(inst);
+                    Config.Save();
+                }
+                else
+                {
+                    Settings.Load().PluginInstances.Remove(inst);
+                    Settings.Load().Save();
+                }
+
                 PluginManager.Instance.RemoveInstance(inst.Id);
                 RebuildUI();
             }

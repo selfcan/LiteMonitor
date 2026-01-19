@@ -158,9 +158,8 @@ namespace LiteMonitor.src.UI.SettingsPage
             base.OnShow();
             if (Config == null) return;
 
-            // ★★★ Fix: Always reload working list from Config to get latest changes (e.g. newly added plugins) ★★★
-            // The previous logic (if _workingList == null) prevented new items from showing up
-            // because _workingList was cached and didn't know about the new plugin items added in PluginPage.
+            // ★★★ Reverted: Remove _isLoaded check to ensure new Plugin targets appear immediately ★★★
+            // User prefers seeing new items over preserving unsaved reordering across tabs.
             try
             {
                 var json = JsonSerializer.Serialize(Config.MonitorItems);

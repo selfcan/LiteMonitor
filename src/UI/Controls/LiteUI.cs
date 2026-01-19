@@ -2,6 +2,7 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 using LiteMonitor.src.Core; // 确保引用了 UIUtils
+using LiteMonitor.src.UI.SettingsPage;
 
 namespace LiteMonitor.src.UI.Controls
 {
@@ -22,6 +23,126 @@ namespace LiteMonitor.src.UI.Controls
         public static Color TextWarn = Color.FromArgb(215, 145, 0); 
         public static Color TextCrit = Color.FromArgb(220, 50, 50); 
     }
+
+    public class LiteActionRow : Panel
+    {
+        public Label Label { get; private set; }
+        public Control RightControl { get; private set; }
+
+        public LiteActionRow(string title, Control rightControl)
+        {
+            this.Height = UIUtils.S(40);
+            this.Margin = new Padding(0); // Full width item
+            this.Padding = new Padding(0);
+
+            Label = new Label { 
+                Text = title, 
+                AutoSize = true, 
+                Font = new Font("Microsoft YaHei UI", 9F), 
+                ForeColor = UIColors.TextSub, // Slightly gray for descriptions/tips
+                TextAlign = ContentAlignment.MiddleLeft 
+            };
+
+            RightControl = rightControl;
+            
+            this.Controls.Add(RightControl);
+            this.Controls.Add(Label);
+
+            this.Layout += (s, e) => {
+                int mid = this.Height / 2;
+                Label.Location = new Point(UIUtils.S(5), mid - Label.Height / 2); // Indent slightly
+                
+                // Position RightControl on the right
+                if (RightControl.Dock != DockStyle.Fill && RightControl.Dock != DockStyle.Top && RightControl.Dock != DockStyle.Bottom)
+                {
+                    RightControl.Location = new Point(this.Width - RightControl.Width - UIUtils.S(5), mid - RightControl.Height / 2);
+                }
+            };
+        }
+    }
+
+    public class LiteThresholdRow : Panel
+    {
+        public LiteThresholdRow(SettingsPageBase page, string title, string unit, ValueRange range)
+        {
+            this.Height = UIUtils.S(40);
+            this.Margin = new Padding(0);
+            this.Padding = new Padding(0);
+
+            // Title
+            var lblTitle = new Label {
+                Text = title, AutoSize = true, 
+                Font = new Font("Microsoft YaHei UI", 9F), ForeColor = UIColors.TextMain,
+                TextAlign = ContentAlignment.MiddleLeft
+            };
+            this.Controls.Add(lblTitle);
+
+            // Right Container
+            var rightBox = new FlowLayoutPanel {
+                AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                FlowDirection = FlowDirection.LeftToRight, WrapContents = false, 
+                BackColor = Color.Transparent, Padding = new Padding(0)
+            };
+
+            // Inputs
+            var inputWarn = new LiteNumberInput(range.Warn.ToString(), unit, LanguageManager.T("Menu.ValueWarnColor"), 140, UIColors.TextWarn);
+            inputWarn.Padding = UIUtils.S(new Padding(0, 5, 0, 1));
+            
+            var arrow = new Label { Text = "➜", AutoSize = true, ForeColor = Color.LightGray, Font = new Font("Microsoft YaHei UI", 9F), Margin = UIUtils.S(new Padding(5, 4, 5, 0)) };
+            
+            var inputCrit = new LiteNumberInput(range.Crit.ToString(), unit, LanguageManager.T("Menu.ValueCritColor"), 140, UIColors.TextCrit);
+            inputCrit.Padding = UIUtils.S(new Padding(0, 5, 0, 1));
+
+            // Deferred Bindings
+            page.RegisterDelaySave(() => {
+                range.Warn = inputWarn.ValueDouble;
+                range.Crit = inputCrit.ValueDouble;
+            });
+
+            rightBox.Controls.Add(inputWarn);
+            rightBox.Controls.Add(arrow);
+            rightBox.Controls.Add(inputCrit);
+            this.Controls.Add(rightBox);
+
+            // Layout
+            this.Layout += (s, e) => {
+                lblTitle.Location = new Point(UIUtils.S(5), (this.Height - lblTitle.Height) / 2);
+                rightBox.Location = new Point(this.Width - rightBox.Width - UIUtils.S(5), (this.Height - rightBox.Height) / 2);
+            };
+            
+            // Separator Line
+            this.Paint += (s, e) => {
+                using(var p = new Pen(Color.FromArgb(240, 240, 240))) e.Graphics.DrawLine(p, 0, Height-1, Width, Height-1);
+            };
+        }
+    }
+
+    public class LiteHintRow : Panel
+    {
+        public LiteHintRow(string text, int indent = 0)
+        {
+            this.Dock = DockStyle.Top;
+            this.Margin = new Padding(0);
+            this.Padding = UIUtils.S(new Padding(indent + 5, 5, 5, 5));
+            this.AutoSize = true;
+
+            var lbl = new Label { 
+                Text = text, 
+                AutoSize = true, 
+                MaximumSize = new Size(UIUtils.S(500), 0), // Limit width to trigger wrap? Actual width set in Layout
+                Font = new Font("Microsoft YaHei UI", 8F), 
+                ForeColor = Color.Gray,
+                Dock = DockStyle.Fill
+            };
+            this.Controls.Add(lbl);
+            
+            // Dynamic Height based on text
+            this.Resize += (s, e) => {
+                lbl.MaximumSize = new Size(this.Width - this.Padding.Horizontal, 0);
+            };
+        }
+    }
+
     public static class UIFonts 
     {
         public static Font Regular(float size) => new Font("Microsoft YaHei UI", size, FontStyle.Regular);
@@ -76,10 +197,6 @@ namespace LiteMonitor.src.UI.Controls
 
         public void AddHeaderAction(Control action)
         {
-            // 动作按钮靠右对齐
-            // 为了垂直居中，我们可以把 action 放在一个容器里，或者手动计算位置
-            // 这里简单处理：使用 Dock=Right，并设置 Padding/Margin
-            
             // 创建一个包装容器来控制垂直位置和边距
             var wrapper = new Panel 
             { 
@@ -90,13 +207,10 @@ namespace LiteMonitor.src.UI.Controls
             
             // 手动垂直居中
             action.Location = new Point(0, (_header.Height - action.Height) / 2);
-            // action.Dock = DockStyle.None; // 默认就是 None
             
             wrapper.Controls.Add(action);
             _header.Controls.Add(wrapper);
             
-            // 确保 Label 不会被遮挡 (Label 是 absolute positioning，Wrapper 是 Dock Right)
-            // Dock Right 会占据右侧空间，Label 在左侧，应该没事。
             wrapper.BringToFront(); // 确保在最右侧
         }
 
@@ -182,18 +296,14 @@ namespace LiteMonitor.src.UI.Controls
             }
         }
 
-        public LiteUnderlineInput(string text, string unit = "", string labelPrefix = "", int width = 160, Color? fontColor = null,HorizontalAlignment align = HorizontalAlignment.Left) // ★ 新增参数)
+        public LiteUnderlineInput(string text, string unit = "", string labelPrefix = "", int width = 160, Color? fontColor = null, HorizontalAlignment align = HorizontalAlignment.Left) 
         {
             // ★★★ 修改：Size/Padding 缩放
-            this.Size = new Size(UIUtils.S(width), UIUtils.S(26)); // ★ 增加高度到 28 (原26)，防止文字裁切
+            this.Size = new Size(UIUtils.S(width), UIUtils.S(26)); 
             this.BackColor = Color.Transparent;
-            this.Padding = UIUtils.S(new Padding(0, 2, 0, 3)); // ★ 减少顶部Padding (5->2)，给文字留足空间
+            this.Padding = UIUtils.S(new Padding(0, 2, 0, 3)); 
             this.Cursor = Cursors.IBeam;
 
-            // ★★★ 关键修复：先添加 Inner，再添加 Label ★★★
-            // 在 Dock 布局中，后添加的控件 (Top Z-Order) 优先占据边缘。
-            // 我们希望 Label 和 Unit 优先占据左右两侧，Inner 填充剩余空间。
-            
             // 1. 创建并添加输入框 (垫底)
             Inner = new TextBox {
                 Text = text,
@@ -202,10 +312,9 @@ namespace LiteMonitor.src.UI.Controls
                 BackColor = Color.White,
                 Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Regular),
                 ForeColor = fontColor ?? UIColors.TextSub,
-                // ★★★ 只需增加这一行 ★★★
-                TextAlign = align // ★ 修改这里：赋值为传入的参数
+                TextAlign = align 
             };
-            this.Controls.Add(Inner); // 先加它！
+            // this.Controls.Add(Inner); // Moved to end to ensure correct Dock order (Inner should be last Docked => Front of Z-Order)
 
             // 2. 添加单位 (Dock Right, 浮在右边)
             if (!string.IsNullOrEmpty(unit))
@@ -219,7 +328,7 @@ namespace LiteMonitor.src.UI.Controls
                     TextAlign = ContentAlignment.BottomRight, 
                     Padding = new Padding(0, 0, 0, 4) 
                 };
-                this.Controls.Add(_lblUnit); // 后加，覆盖在 Right
+                this.Controls.Add(_lblUnit); 
                 _lblUnit.Click += (s, e) => Inner.Focus();
             }
 
@@ -235,14 +344,22 @@ namespace LiteMonitor.src.UI.Controls
                     TextAlign = ContentAlignment.BottomLeft, 
                     Padding = new Padding(0, 0, 4, 3) 
                 };
-                this.Controls.Add(_lblLabel); // 最后加，覆盖在 Left
+                this.Controls.Add(_lblLabel); 
                 _lblLabel.Click += (s, e) => Inner.Focus();
             }
+
+            // Add Inner last so it is at the Front of Z-Order (Index 0),
+            // which means it is docked LAST (filling remaining space).
+            this.Controls.Add(Inner);
 
             // 事件转发
             Inner.Enter += (s, e) => this.Invalidate();
             Inner.Leave += (s, e) => this.Invalidate();
             this.Click += (s, e) => Inner.Focus();
+
+            // ★★★ Fix: Ensure Inner is at the top of Z-Order so it docks LAST (filling remaining space)
+            // ensuring it respects the space taken by previously docked controls (Unit/Label)
+            Inner.BringToFront(); 
         }
 
         public void SetTextColor(Color c) => Inner.ForeColor = c;
@@ -268,20 +385,17 @@ namespace LiteMonitor.src.UI.Controls
     // =======================================================================
     public class LiteNumberInput : LiteUnderlineInput
     {
-        // 升级构造函数：支持前缀标签(label)和文字颜色(color)，以适配 ThresholdPage
         public LiteNumberInput(
             string text, 
             string unit = "", 
-            string label = "",      // 新增：支持前缀 (如 "警告")
+            string label = "",      
             int width = 160, 
-            Color? color = null,    // 新增：支持颜色 (如 红色/橙色)
+            Color? color = null,    
             int maxLength = 10) 
-            : base(text, unit, label, width, color, HorizontalAlignment.Center) // 调用基类完整构造
+            : base(text, unit, label, width, color, HorizontalAlignment.Center) 
         {
-            // 1. 设置最大长度
             this.Inner.MaxLength = maxLength;
 
-            // 2. 核心：只允许输入数字、退格键、负号、小数点
             this.Inner.KeyPress += (s, e) =>
             {
                 if (char.IsControl(e.KeyChar) || char.IsDigit(e.KeyChar)) return;
@@ -290,7 +404,6 @@ namespace LiteMonitor.src.UI.Controls
                 e.Handled = true;
             };
 
-            // 3. 失去焦点自动补零
             this.Inner.Leave += (s, e) =>
             {
                 if (string.IsNullOrWhiteSpace(this.Inner.Text) || this.Inner.Text == "." || this.Inner.Text == "-")
@@ -371,8 +484,6 @@ namespace LiteMonitor.src.UI.Controls
             this.Controls.Add(Inner); 
 
             // ★★★ 新增：手动布局以实现垂直居中 ★★★
-            // WinForms 的 ComboBox 高度是固定的，Dock=Fill 会导致它顶在上面。
-            // 这里我们手动计算 Top 坐标，让它居中。
             this.Layout += (s, e) => {
                 Inner.Width = this.Width - 2; // 减去边框宽度
                 Inner.Location = new Point(1, (this.Height - Inner.Height) / 2);
