@@ -622,17 +622,20 @@ namespace LiteMonitor.src.UI.Controls
     
     /// <summary>
     /// 终极防闪烁面板
-    /// 开启了 WS_EX_COMPOSITED，强制让所有子控件参与双缓冲合成
+    /// 1. 开启双缓冲合成
+    /// 2. 拦截背景擦除 (消除白屏闪烁的关键)
     /// </summary>
     public class BufferedPanel : Panel
     {
         public BufferedPanel()
         {
+            // 开启所有标准的双缓冲标志
             this.DoubleBuffered = true;
             this.SetStyle(ControlStyles.AllPaintingInWmPaint | 
                           ControlStyles.UserPaint | 
                           ControlStyles.OptimizedDoubleBuffer | 
-                          ControlStyles.ResizeRedraw, true);
+                          ControlStyles.ResizeRedraw |
+                          ControlStyles.ContainerControl, true); // 确保它作为容器被优化
             this.UpdateStyles();
         }
 
@@ -640,10 +643,24 @@ namespace LiteMonitor.src.UI.Controls
         {
             get
             {
-                var cp = base.CreateParams;
-                cp.ExStyle |= 0x02000000; // 开启 WS_EX_COMPOSITED
+                CreateParams cp = base.CreateParams;
+                // WS_EX_COMPOSITED (0x02000000): 让所有子控件在离屏缓冲区合成后一次性显示
+                cp.ExStyle |= 0x02000000; 
                 return cp;
             }
+        }
+
+        // ★★★ 核心修复：拦截 WM_ERASEBKGND ★★★
+        // Windows 默认会先用背景色清除窗口，这会导致一瞬间的“白屏”或“黑屏”。
+        // 我们直接返回 1 (true)，告诉 Windows“我已经擦除过了，你别管”，从而消灭闪烁。
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == 0x0014) // WM_ERASEBKGND
+            {
+                m.Result = (IntPtr)1;
+                return;
+            }
+            base.WndProc(ref m);
         }
     }
 }

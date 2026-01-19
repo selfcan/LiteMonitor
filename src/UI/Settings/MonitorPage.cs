@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
-using System.Text.Json; // 引入 JSON 库用于深拷贝
+using System.Text.Json;
 using System.Windows.Forms;
 using LiteMonitor.src.Core;
 using LiteMonitor.src.UI.Controls;
@@ -14,6 +14,7 @@ namespace LiteMonitor.src.UI.SettingsPage
         private Panel _container;
         private bool _isLoaded = false;
         private bool _isTaskbarTab = false;
+        private string _lastDataSignature = ""; // ★★★ 性能优化：数据指纹
 
         private Panel _tabPanel;    
         private Panel _headerPanel; 
@@ -25,12 +26,10 @@ namespace LiteMonitor.src.UI.SettingsPage
         
         private Label _lblCol1; 
         private Label _lblCol2; 
-        // ★★★ [新增] 单位列 Label ★★★
         private Label _lblColUnit;
         private Label _lblCol3; 
         private Label _lblCol4; 
 
-        // 本地工作副本
         private List<MonitorItemConfig> _workingList;
 
         public MonitorPage()
@@ -84,11 +83,7 @@ namespace LiteMonitor.src.UI.SettingsPage
             
             _chkOnlyVisible.CheckedChanged += (s, e) => 
             {
-                // 当复选框改变时，界面上显示的还是改变之前的状态
-                // 例如：从 [未勾选] -> [勾选]，UI 显示的是 [全部列表]
-                // 所以我们需要用 (!Checked) 也就是 [未勾选/全部模式] 的逻辑来保存当前的 UI 顺序
                 SaveToWorkingList(isFilteredOverride: !_chkOnlyVisible.Checked);
-                
                 ReloadList();
             };
             
@@ -106,7 +101,7 @@ namespace LiteMonitor.src.UI.SettingsPage
             };
 
             _lblCol1 = CreateHeaderLabel(); _lblCol2 = CreateHeaderLabel();
-            _lblColUnit = CreateHeaderLabel(); // [新增]
+            _lblColUnit = CreateHeaderLabel(); 
             _lblCol3 = CreateHeaderLabel(); _lblCol4 = CreateHeaderLabel();
             _headerPanel.Controls.AddRange(new Control[] { _lblCol1, _lblCol2, _lblColUnit, _lblCol3, _lblCol4 });
 
@@ -134,7 +129,6 @@ namespace LiteMonitor.src.UI.SettingsPage
         {
             if (_isTaskbarTab == toTaskbarMode && _isLoaded) return;
             
-            // 切换 Tab 时保存当前状态
             if (_isLoaded) SaveToWorkingList(); 
 
             _isTaskbarTab = toTaskbarMode;
@@ -150,23 +144,32 @@ namespace LiteMonitor.src.UI.SettingsPage
 
             _tabPanel.Width++; _tabPanel.Width--; 
             
+            // 切换 Tab 时必须刷新，因为显示模式变了
             ReloadList();
         }
 
+        // ★★★ 性能优化核心：按需加载 ★★★
         public override void OnShow()
         {
             base.OnShow();
             if (Config == null) return;
 
-            // ★★★ Reverted: Remove _isLoaded check to ensure new Plugin targets appear immediately ★★★
-            // User prefers seeing new items over preserving unsaved reordering across tabs.
+            // 1. 计算数据指纹 (Data Signature)
+            // 只要 Config.MonitorItems 的内容（Keys的组合）没变，我们就不需要重新加载
+            string currentSig = GenerateSignature();
+
+            // 2. 脏检查：如果已加载且指纹未变，直接返回！(0ms 耗时)
+            if (_isLoaded && currentSig == _lastDataSignature) 
+            {
+                return; 
+            }
+
+            // 3. 数据变了（例如在插件页添加了新项），执行全量加载
             try
             {
                 var json = JsonSerializer.Serialize(Config.MonitorItems);
                 _workingList = JsonSerializer.Deserialize<List<MonitorItemConfig>>(json) ?? new List<MonitorItemConfig>();
 
-                // ★★★ Fix: Restore Dynamic Properties lost during JSON serialization (due to [JsonIgnore]) ★★★
-                // This ensures the Settings UI displays the current live values (e.g. "Tencent 200") instead of empty/default ones.
                 var liveMap = Config.MonitorItems.ToDictionary(x => x.Key, x => x);
                 foreach (var item in _workingList)
                 {
@@ -182,80 +185,88 @@ namespace LiteMonitor.src.UI.SettingsPage
                 _workingList = new List<MonitorItemConfig>();
             }
 
-            // Always refresh the list UI
-            // ★★★ 性能优化与崩溃修复 ★★★
-            // 如果 _container 包含大量控件，频繁 Dispose 会很慢甚至崩溃
-            // 我们可以尝试仅 Diff 更新，或者确保 Dispose 安全
-            // 目前先保持全量刷新，但确保在主线程安全操作
-            if (this.IsHandleCreated)
-            {
-                 this.Invoke((MethodInvoker)delegate { ReloadList(); });
-            }
-            else
-            {
-                 ReloadList(); 
-            }
+            _lastDataSignature = currentSig;
+            ReloadList();
             
             _isLoaded = true;
+        }
+
+        private string GenerateSignature()
+        {
+            if (Config?.MonitorItems == null) return "null";
+            // 简单有效的指纹：Item数量 + 所有Key的拼接
+            // 如果你在插件页删除了一个项，数量或 Key 列表会变，指纹就会变，触发刷新。
+            return Config.MonitorItems.Count + "|" + string.Join(",", Config.MonitorItems.Select(x => x.Key));
         }
 
         private void ReloadList()
         {
+            if (_container == null || _container.IsDisposed) return;
+            
             _container.SuspendLayout();
             
-            // 刷新语言缓存
-            UpdateLanguageCacheFromWorkingList();
-
-            // 清理旧控件 
-            while (_container.Controls.Count > 0)
+            try 
             {
-                var control = _container.Controls[0];
-                if (control is GroupBlock block)
+                UpdateLanguageCacheFromWorkingList();
+
+                // 清理旧控件
+                for (int i = _container.Controls.Count - 1; i >= 0; i--)
                 {
-                    block.Header.MoveUp -= GroupHeader_MoveUp; block.Header.MoveDown -= GroupHeader_MoveDown;
-                    foreach (var row in block.RowsPanel.Controls.OfType<MonitorItemRow>()) { row.MoveUp -= Row_MoveUp; row.MoveDown -= Row_MoveDown; }
+                    var control = _container.Controls[i];
+                    if (control is GroupBlock block)
+                    {
+                        block.Header.MoveUp -= GroupHeader_MoveUp; block.Header.MoveDown -= GroupHeader_MoveDown;
+                        foreach (var row in block.RowsPanel.Controls.OfType<MonitorItemRow>()) { row.MoveUp -= Row_MoveUp; row.MoveDown -= Row_MoveDown; }
+                    }
+                    else if (control is MonitorItemRow row)
+                    {
+                        row.MoveUp -= Row_MoveUp; row.MoveDown -= Row_MoveDown;
+                    }
+                    _container.Controls.RemoveAt(i);
+                    control.Dispose();
                 }
-                else if (control is MonitorItemRow row)
+
+                UpdateHeaderLayout();
+
+                var controlsToAdd = new List<Control>();
+                var spacer = new Panel { Dock = DockStyle.Top, Height = UIUtils.S(30), BackColor = Color.Transparent };
+                controlsToAdd.Add(spacer);
+
+                if (_isTaskbarTab)
                 {
-                    row.MoveUp -= Row_MoveUp; row.MoveDown -= Row_MoveDown;
+                    var items = _workingList.OrderBy(x => x.TaskbarSortIndex).ToList();
+                    if (_chkOnlyVisible.Checked)
+                        items = items.Where(x => x.VisibleInTaskbar).ToList();
+
+                    for (int i = items.Count - 1; i >= 0; i--)
+                    {
+                        var row = new MonitorItemRow(items[i], true);
+                        row.MoveUp += Row_MoveUp; row.MoveDown += Row_MoveDown;
+                        controlsToAdd.Add(row);
+                    }
                 }
-                control.Dispose();
-            }
-
-            UpdateHeaderLayout();
-
-            var spacer = new Panel { Dock = DockStyle.Top, Height = UIUtils.S(30), BackColor = Color.Transparent };
-            _container.Controls.Add(spacer);
-
-            if (_isTaskbarTab)
-            {
-                var items = _workingList.OrderBy(x => x.TaskbarSortIndex).ToList();
-                if (_chkOnlyVisible.Checked)
-                    items = items.Where(x => x.VisibleInTaskbar).ToList();
-
-                for (int i = items.Count - 1; i >= 0; i--)
+                else
                 {
-                    var row = new MonitorItemRow(items[i], true);
-                    row.MoveUp += Row_MoveUp; row.MoveDown += Row_MoveDown;
-                    _container.Controls.Add(row);
+                    var items = _workingList.OrderBy(x => x.SortIndex).ToList();
+                    var groups = items.GroupBy(x => x.UIGroup);
+                    
+                    foreach (var g in groups.Reverse())
+                    {
+                        var block = CreateGroupBlock(g.Key, g.ToList());
+                        controlsToAdd.Add(block);
+                    }
                 }
-            }
-            else
-            {
-                var items = _workingList.OrderBy(x => x.SortIndex).ToList();
-                var groups = items.GroupBy(x => x.UIGroup);
                 
-                foreach (var g in groups.Reverse())
-                {
-                    var block = CreateGroupBlock(g.Key, g.ToList()); // 需要修改 CreateGroupBlock
-                    _container.Controls.Add(block);
-                }
+                _container.Controls.AddRange(controlsToAdd.ToArray());
+            }
+            finally
+            {
+                _container.ResumeLayout();
             }
 
-            _container.ResumeLayout();
             _isLoaded = true;
         }
-        // [新增] 临时将工作列表中的文本应用到语言管理器，以实现所见即所得
+
         private void UpdateLanguageCacheFromWorkingList()
         {
             if (_workingList == null) return;
@@ -301,8 +312,7 @@ namespace LiteMonitor.src.UI.SettingsPage
             else _lblCol2.Text = LanguageManager.T("Menu.name");  
             _lblCol2.Location = new Point(MonitorLayout.X_COL2 + offset, y);
 
-            // ★★★ [新增] Unit Header ★★★
-            _lblColUnit.Text = LanguageManager.T("Menu.Unit"); // 可以放入 LanguageManager
+            _lblColUnit.Text = LanguageManager.T("Menu.Unit");
             _lblColUnit.Location = new Point(MonitorLayout.X_COL_UNIT + offset, y);
 
             _lblCol3.Text = LanguageManager.T("Menu.showHide"); 
@@ -327,12 +337,15 @@ namespace LiteMonitor.src.UI.SettingsPage
             };
             header.Tag = block;
 
+            var rows = new List<Control>();
             for (int i = items.Count - 1; i >= 0; i--)
             {
                 var row = new MonitorItemRow(items[i], false);
                 row.MoveUp += Row_MoveUp; row.MoveDown += Row_MoveDown;
-                rowsPanel.Controls.Add(row);
+                rows.Add(row);
             }
+            rowsPanel.Controls.AddRange(rows.ToArray());
+            
             return block;
         }
 
@@ -348,33 +361,27 @@ namespace LiteMonitor.src.UI.SettingsPage
             if (newIdx >= 0 && newIdx < p.Controls.Count) p.Controls.SetChildIndex(c, newIdx);
         }
 
-        // 保存 UI 状态到 _workingList
         private void SaveToWorkingList(bool? isFilteredOverride = null)
         {
             if (_workingList == null) return;
 
-            // 1. 同步属性 (勾选、文本)
             SyncUIToWorkingList();
 
             if (_isTaskbarTab)
             {
-                // 决定当前 UI 应该被视为 "过滤列表" 还是 "全量列表"
                 bool isFiltered = isFilteredOverride ?? _chkOnlyVisible.Checked;
 
                 if (isFiltered)
                 {
-                    // === 算法：骨架+插队 (处理部分视图排序) ===
                     var uiRows = _container.Controls.Cast<Control>().Reverse().OfType<MonitorItemRow>().ToList();
                     var newVisibleList = uiRows.Select(r => r.Config).ToList();
                     
                     var fullList = _workingList.OrderBy(x => x.TaskbarSortIndex).ToList();
                     var oldVisibleList = fullList.Where(x => newVisibleList.Contains(x)).ToList();
 
-                    // 识别锚点 (未移动的项)
                     var lcs = GetLCS(oldVisibleList, newVisibleList);
                     var anchors = new HashSet<MonitorItemConfig>(lcs);
 
-                    // 构建 "骨架"：移除所有被移动的显示项，保留隐藏项和锚点
                     var backbone = new List<MonitorItemConfig>();
                     foreach (var item in fullList)
                     {
@@ -384,39 +391,32 @@ namespace LiteMonitor.src.UI.SettingsPage
                         }
                     }
 
-                    // 将 "移动项" 插回骨架
                     int insertCursor = 0;
                     foreach (var item in newVisibleList)
                     {
                         if (anchors.Contains(item))
                         {
-                            // 遇到锚点：更新游标到它后面
                             int idx = backbone.IndexOf(item);
                             if (idx >= 0) insertCursor = idx + 1;
                         }
                         else
                         {
-                            // 遇到移动项：强行插入当前位置
                             if (insertCursor > backbone.Count) insertCursor = backbone.Count;
                             backbone.Insert(insertCursor, item);
                             insertCursor++;
                         }
                     }
 
-                    // 更新索引
                     for (int i = 0; i < backbone.Count; i++) backbone[i].TaskbarSortIndex = i;
                 }
                 else
                 {
-                    // === 算法：全量覆盖 (处理全部视图排序) ===
-                    // 直接按照 UI 顺序重置所有索引
                     var uiRows = _container.Controls.Cast<Control>().Reverse().OfType<MonitorItemRow>().ToList();
                     for(int i=0; i<uiRows.Count; i++) uiRows[i].Config.TaskbarSortIndex = i;
                 }
             }
             else
             {
-                // 主面板排序逻辑
                 int idx = 0;
                 var blocks = _container.Controls.Cast<Control>().Reverse().OfType<GroupBlock>();
                 foreach (var block in blocks)
@@ -440,22 +440,28 @@ namespace LiteMonitor.src.UI.SettingsPage
             
             Config.HorizontalFollowsTaskbar = _chkLinkHorizontal.Checked;
             
-            // 执行最后的保存计算
             SaveToWorkingList();
 
-            // 提交副本到全局配置
-            Config.MonitorItems = new List<MonitorItemConfig>(_workingList);
+            var activeKeys = new HashSet<string>(Config.MonitorItems.Select(x => x.Key));
+            var mergedList = _workingList.Where(x => activeKeys.Contains(x.Key)).ToList();
+            
+            var workingKeys = new HashSet<string>(_workingList.Select(x => x.Key));
+            var newItems = Config.MonitorItems.Where(x => !workingKeys.Contains(x.Key)).ToList();
+            if (newItems.Count > 0)
+            {
+                mergedList.AddRange(newItems);
+            }
+
+            Config.MonitorItems = mergedList;
             Config.SyncToLanguage();
         }
 
         private List<MonitorItemConfig> GetLCS(List<MonitorItemConfig> list1, List<MonitorItemConfig> list2)
         {
-            // Fast Path: 如果两列表完全一致，直接返回
             if (list1.Count == list2.Count && list1.SequenceEqual(list2))
                 return new List<MonitorItemConfig>(list1);
 
             int n = list1.Count; int m = list2.Count;
-            // 简单长度检查，避免极端情况
             if (n == 0 || m == 0) return new List<MonitorItemConfig>();
 
             int[,] dp = new int[n + 1, m + 1];
